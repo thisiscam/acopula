@@ -670,69 +670,67 @@ def _marginal_transforms_chunked(
     obs: jax.Array,
     survival: bool = False,
 ) -> Tuple[jax.Array, jax.Array]:
-    """Compute copula inputs and marginal log-likelihoods for leaves.
+    """Compute copula inputs and marginal log-likelihoods for all leaves.
 
-    When ``survival=True`` (right-censored survival data), the copula
-    models the joint survival function S = C(S_1,...,S_d) and ALL leaves
-    receive the survival probability u = 1 - F(t).  When ``survival=False``
-    (the default), all leaves receive u = F(t).
+    Pre-builds a single advanced-indexing gather for ALL leaves (one HLO op
+    independent of the number of leaves), buckets by (dist_type, is_censored)
+    for vmapped CDF/log_prob calls, and scatters results back into a flat
+    output via at[].set (one op per group).  This keeps the trace work
+    constant in the leaf count, matching the schedule.py-driven design of
+    the rest of the bell pipeline.
 
-    Returns:
-        u_vec: Vector of copula input values, ordered by leaves_in_order.
-        log_lik_vec: Vector of marginal log-likelihood values, ordered by leaves_in_order.
-                     (0.0 for censored observations).
+    When ``survival=True`` (right-censored survival data), the copula models
+    the joint survival function S = C(S_1,...,S_d) and ALL leaves receive the
+    survival probability u = 1 - F(t).
     """
-    # 1. Group leaves by (dist_type, is_censored)
+    n_leaves = len(leaves_in_order)
+    if n_leaves == 0:
+        return jnp.zeros(0), jnp.zeros(0)
+
+    # Validate every leaf has obs_index (Python-side, no JAX op).
+    for lf in leaves_in_order:
+        if lf.obs_index is None:
+            raise ValueError("Leaf missing obs_index; cannot map observation value.")
+
+    # Build batched advanced-indexing gather: one HLO op for all leaves.
+    rank = len(leaves_in_order[0].obs_index)
+    if rank == 1:
+        all_idx = jnp.array(
+            [lf.obs_index[0] for lf in leaves_in_order], dtype=jnp.int32)
+        obs_arr_all = obs[all_idx]                                     # (n_leaves,)
+    else:
+        per_dim_idxs = tuple(
+            jnp.array([lf.obs_index[k] for lf in leaves_in_order], dtype=jnp.int32)
+            for k in range(rank))
+        obs_arr_all = obs[per_dim_idxs]                                # (n_leaves,)
+
+    # Bucket leaves Python-side.
     groups: Dict[Tuple[type, bool], List[int]] = {}
     no_dist_indices: List[int] = []
-
     for i, lf in enumerate(leaves_in_order):
         if lf.dist_type is None:
             no_dist_indices.append(i)
         else:
-            is_censored = getattr(lf, "censored", False)
-            groups.setdefault((lf.dist_type, is_censored), []).append(i)
+            groups.setdefault(
+                (lf.dist_type, getattr(lf, "censored", False)), []).append(i)
 
-    # Storage for results: (original_index, u_val, log_lik_val)
-    results: List[Tuple[int, jax.Array, jax.Array]] = []
+    # Output accumulators: assemble via scatter, one op per group.
+    u_vec = jnp.zeros(n_leaves, dtype=obs_arr_all.dtype)
+    log_lik_vec = jnp.zeros(n_leaves, dtype=obs_arr_all.dtype)
 
-    # 2. Process leaves with no distribution (assumed already uniform)
-    for i in no_dist_indices:
-        lf = leaves_in_order[i]
-        val = _leaf_value_from_obs(lf, obs)
-        # Scalarize if needed
-        val = jnp.atleast_1d(val)[0] if val.ndim == 0 else val
-        results.append((i, val, jnp.array(0.0, dtype=val.dtype)))
+    if no_dist_indices:
+        # No distribution => obs already on copula scale, just copy through.
+        idx_arr = jnp.array(no_dist_indices, dtype=jnp.int32)
+        u_vec = u_vec.at[idx_arr].set(obs_arr_all[idx_arr])
 
-    # 3. Process grouped distributions
     for (dist_type, is_censored), leaf_is in groups.items():
-        # Representative leaf for static structure
         rep_leaf = leaves_in_order[leaf_is[0]]
         static_kwargs = rep_leaf.dist_static_kwargs or {}
         rep_spec = rep_leaf.dist_params_symbol
-
-        # Gather observed values for this group
-        obs_vals_list = []
-        starts: List[int] = []
-
-        for li in leaf_is:
-            lf = leaves_in_order[li]
-            val = _leaf_value_from_obs(lf, obs)
-            val = jnp.atleast_1d(val)[0] if val.ndim == 0 else val
-            obs_vals_list.append(val)
-
-            # Param starts
-            starts.append(
-                int(lf.dist_params_symbol.start)
-                if lf.dist_params_symbol is not None
-                else -1
-            )
-
-        obs_arr = jnp.array(obs_vals_list)
-        starts_arr = jnp.array(starts, dtype=jnp.int32)
+        idx_arr = jnp.array(leaf_is, dtype=jnp.int32)
+        obs_arr = obs_arr_all[idx_arr]                                 # (n_g,)
 
         if rep_spec is None:
-            # Static params only
             dist_obj = dist_type(**static_kwargs)
             cdf_vals = jax.vmap(dist_obj.cdf)(obs_arr)
             if survival:
@@ -742,9 +740,11 @@ def _marginal_transforms_chunked(
             else:
                 log_lik_vals = jnp.zeros_like(cdf_vals)
         else:
-            # Dynamic params
             size = rep_spec.size
             unravel_fn = rep_spec.unravel_fn
+            starts_arr = jnp.array(
+                [int(leaves_in_order[li].dist_params_symbol.start) for li in leaf_is],
+                dtype=jnp.int32)
 
             def transform_one(start_i, x_i):
                 flat_slice = lax.dynamic_slice(params, (start_i,), (size,))
@@ -755,19 +755,12 @@ def _marginal_transforms_chunked(
                     u = 1.0 - u
                 if not is_censored:
                     return u, dist_obj.log_prob(x_i)
-                else:
-                    return u, 0.0
+                return u, jnp.array(0.0, dtype=u.dtype)
 
             cdf_vals, log_lik_vals = jax.vmap(transform_one)(starts_arr, obs_arr)
 
-        for k, original_idx in enumerate(leaf_is):
-            results.append((original_idx, cdf_vals[k], log_lik_vals[k]))
-
-    # 4. Sort back to original order
-    results.sort(key=lambda x: x[0])
-
-    u_vec = jnp.stack([r[1] for r in results])
-    log_lik_vec = jnp.stack([r[2] for r in results])
+        u_vec = u_vec.at[idx_arr].set(cdf_vals)
+        log_lik_vec = log_lik_vec.at[idx_arr].set(log_lik_vals)
 
     return u_vec, log_lik_vec
 
