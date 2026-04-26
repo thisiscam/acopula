@@ -232,10 +232,21 @@ def _compute_tree_values_staged(
                         is_leaf=True, is_censored=child.censored,
                     ))
             else:
-                # Internal child -- already processed in an earlier stage
+                # Internal child -- already processed in an earlier stage.
+                # Prefer the registered closed-form composition when available:
+                # it computes psi_inv(psi_child(t_child)) directly in log-space,
+                # avoiding the float underflow chain when psi_child(t) is tiny
+                # (e.g. Nelsen9 at moderate t, where psi(t) underflows to 0
+                # and psi_inv(0) = inf).
                 child_info = info[id(child)]
                 C_child = child_info.C_v
-                psi_inv_val = cop.generator_inv(C_child)
+                child_cop = _instantiate_copula_from_flat(child, params_flat)
+                from .compose import get_composition
+                compose_fn = get_composition(cop, child_cop)
+                if compose_fn is not None:
+                    psi_inv_val = compose_fn(child_info.t_v, cop, child_cop)
+                else:
+                    psi_inv_val = cop.generator_inv(C_child)
                 psi_inv_sum = psi_inv_sum + psi_inv_val
                 children_info.append(_ChildInfo(
                     child=child, C_child=C_child, psi_inv_C=psi_inv_val,
@@ -1374,6 +1385,7 @@ def _process_tree_values_for_group(
     u_vec: jax.Array,
     params_flat: jax.Array,
     prev_outputs: List[List[_GroupTreeOutput]],
+    stage_groups_for_lookup: List[List["_StageGroup"]] = (),
 ) -> _GroupTreeOutput:
     """Compute (t_v_batch, C_v_batch) for one stage-group via batched JAX ops.
 
@@ -1413,6 +1425,8 @@ def _process_tree_values_for_group(
             psi_inv_leaves = jax.vmap(f_leaf)(ps_arr, u_batch)
         psi_inv_sum = psi_inv_sum + jnp.sum(psi_inv_leaves, axis=1)
 
+    from .compose import _COMPOSE_REGISTRY_BY_NAME
+
     for (ps, pg), positions in internal_buckets.items():
         # prev_pos_matrix[i, j] = prev position for node i at internal-position j
         prev_pos_matrix = jnp.array(
@@ -1420,7 +1434,51 @@ def _process_tree_values_for_group(
             dtype=jnp.int32,
         ).T   # shape (M, n_pos_in_bucket)
         C_batch = prev_outputs[ps][pg].C_v_batch[prev_pos_matrix]  # (M, n_pos_in_bucket)
-        if cop_shared is not None:
+
+        # Look up registered composition by class name -- works regardless of
+        # whether parent / child have shared param starts.  When registered,
+        # use the closed-form h(t) = psi_out_inv(psi_in(t)) directly on
+        # t_child (in log-space) instead of applying generator_inv to C_v
+        # (which underflows when psi_child(t_child) is tiny, e.g. Nelsen9 at
+        # moderate t).
+        child_spec = stage_groups_for_lookup[ps][pg]
+        compose_fn = _COMPOSE_REGISTRY_BY_NAME.get(
+            (spec.cop_cls.__name__, child_spec.cop_cls.__name__)
+        )
+
+        if compose_fn is not None:
+            t_batch = prev_outputs[ps][pg].t_v_batch[prev_pos_matrix]   # (M, npos)
+            child_cop_shared, child_make_cop = _instantiate_group_copula(
+                child_spec, params_flat)
+
+            if cop_shared is not None and child_cop_shared is not None:
+                psi_inv_internals = jax.vmap(jax.vmap(
+                    lambda t: compose_fn(t, cop_shared, child_cop_shared)))(t_batch)
+            elif cop_shared is not None:  # child per-node
+                child_ps_arr = _ps_arr(child_spec)
+                child_starts_batch = child_ps_arr[prev_pos_matrix]
+                def _comp_pchild(t_val, child_start):
+                    return compose_fn(t_val, cop_shared, child_make_cop(child_start))
+                psi_inv_internals = jax.vmap(jax.vmap(_comp_pchild))(
+                    t_batch, child_starts_batch)
+            elif child_cop_shared is not None:  # parent per-node
+                def _comp_pparent(parent_start, t_row):
+                    parent_cop = make_cop(parent_start)
+                    return jax.vmap(
+                        lambda t: compose_fn(t, parent_cop, child_cop_shared)
+                    )(t_row)
+                psi_inv_internals = jax.vmap(_comp_pparent)(ps_arr, t_batch)
+            else:  # both per-node
+                child_ps_arr = _ps_arr(child_spec)
+                child_starts_batch = child_ps_arr[prev_pos_matrix]
+                def _comp_both(parent_start, t_row, child_starts_row):
+                    parent_cop = make_cop(parent_start)
+                    return jax.vmap(
+                        lambda t, cs: compose_fn(t, parent_cop, child_make_cop(cs))
+                    )(t_row, child_starts_row)
+                psi_inv_internals = jax.vmap(_comp_both)(
+                    ps_arr, t_batch, child_starts_batch)
+        elif cop_shared is not None:
             psi_inv_internals = jax.vmap(jax.vmap(cop_shared.generator_inv))(C_batch)
         else:
             def f_int(start, c_row):
@@ -1765,7 +1823,10 @@ def _log_likelihood_bell(
     tree_outputs: List[List[_GroupTreeOutput]] = []
     for layer in stage_groups:
         layer_out = [
-            _process_tree_values_for_group(spec, u_vec, params_flat, tree_outputs)
+            _process_tree_values_for_group(
+                spec, u_vec, params_flat, tree_outputs,
+                stage_groups_for_lookup=stage_groups,
+            )
             for spec in layer
         ]
         tree_outputs.append(layer_out)

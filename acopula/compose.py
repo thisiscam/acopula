@@ -112,10 +112,21 @@ def _frank_compose(t, parent_cop, child_cop):
     return t + jnp.log(a_o * e / jnp.expm1(r * v))
 
 
+def _nelsen9_compose(t, parent_cop, child_cop):
+    # psi(t) = exp((1 - e^t)/theta).  Naive psi_out_inv(psi_in(t)) underflows
+    # for moderate t (psi_in(10) ~ exp(-2.7e4) → 0, then psi_out_inv(0) = inf).
+    # Closed form: log(1 - r*(1 - e^t)) = log(r*e^t + (1 - r))
+    # = t + log(r + (1-r)*e^{-t}), where r = theta_out/theta_in.  Stays finite
+    # for any t in the nesting regime r <= 1.
+    r = parent_cop.theta / child_cop.theta
+    return t + jnp.log(r + (1.0 - r) * jnp.exp(-t))
+
+
 _COMPOSE_REGISTRY_BY_NAME[("Clayton", "Clayton")] = _clayton_compose
 _COMPOSE_REGISTRY_BY_NAME[("Gumbel", "Gumbel")] = _gumbel_compose
 _COMPOSE_REGISTRY_BY_NAME[("Joe", "Joe")] = _joe_compose
 _COMPOSE_REGISTRY_BY_NAME[("Frank", "Frank")] = _frank_compose
+_COMPOSE_REGISTRY_BY_NAME[("Nelsen9", "Nelsen9")] = _nelsen9_compose
 
 
 # ---------------------------------------------------------------------------
