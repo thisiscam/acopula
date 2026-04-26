@@ -27,46 +27,68 @@ inversion. At import time we register a missing ILDJ rule for the
 
 ## Quickstart
 
+A two-level nested Archimedean copula with Frank inner and outer, four
+Uniform leaves, and gradient-based MLE in twenty lines:
+
 ```python
 import jax
 import jax.numpy as jnp
+from tensorflow_probability.substrates import jax as tfp
 from acopula import copula, defmodel, marginal
 
 @copula
-class Clayton:
+class Frank:
     theta: float
     def generator(self, u):
-        return (1 + u)**(-1.0 / self.theta)
-
-@copula
-class AMH:
-    theta: float
-    def generator(self, u):
-        return (1 - self.theta) / (jnp.exp(u) - self.theta)
+        return -jnp.log1p(jnp.expm1(-self.theta) * jnp.exp(-u)) / self.theta
 
 @defmodel
-def nested_amh_clayton(params, obs):
-    outer = AMH(params[0])
-    inner = Clayton(params[1])
+def model(params, obs):
+    outer = Frank(params[0])
+    inner = Frank(params[1])
     return outer(
-        inner(marginal(Weibull(),
-                       obs=obs[i, j],
-                       censored=((i, j) == (1, 3)))
-              for j in range(5))
-        for i in range(4))
+        inner(marginal(tfp.distributions.Uniform(0.0, 1.0), obs=obs[i, j])
+              for j in range(2))
+        for i in range(2))
 
-model = nested_amh_clayton
-model.set_params(jnp.array([0.5, 2.0]))
-ll = model.log_likelihood(observations)
-gradient = jax.grad(ll)(model.params)
+obs = jnp.array([[0.3, 0.7],
+                 [0.4, 0.8]])
+
+model.set_params(jnp.array([2.0, 5.0]))
+print(model.log_likelihood(obs))                # scalar log-likelihood
+
+def neg_ll(params, obs):
+    model.set_params(params)
+    return -model.log_likelihood(obs)
+
+grad = jax.grad(neg_ll)(jnp.array([2.0, 5.0]), obs)
+print(grad)                                     # ∂(-ll)/∂params, exact
 ```
 
-The `@copula` decorator registers parameters and derives the generator inverse
-symbolically (falling back to bisection with implicit-function-theorem
-gradients when symbolic inversion fails). The `@defmodel` decorator traces the
-function into a copula tree, flattens parameters into a single array, and
-exposes `log_likelihood`, `sample`, and `cdf` — all `jit`/`grad`-compatible.
-The `marginal` primitive pairs each leaf with a distribution and an optional
+### With Weibull marginals and right-censoring
+
+For survival data, swap the leaf distribution and mark censored observations.
+Use `float64` for the distribution parameters since `acopula` enables
+`jax_enable_x64` at import time.
+
+```python
+@defmodel
+def survival_model(params, obs):
+    outer = Frank(params[0])
+    inner = Frank(params[1])
+    weib = tfp.distributions.Weibull(
+        concentration=jnp.float64(1.5), scale=jnp.float64(1.0))
+    return outer(
+        inner(marginal(weib, obs=obs[i, j], censored=((i, j) == (1, 1)))
+              for j in range(2))
+        for i in range(2))
+```
+
+`@copula` registers the parameters declared as type-annotated class
+attributes and derives the inverse generator symbolically via `oryx`.
+`@defmodel` traces the function into a copula tree, flattens parameters
+into a single array, and exposes `log_likelihood`, all `jit`/`grad`-compatible.
+`marginal` pairs each leaf with a distribution and an optional
 per-observation censoring flag.
 
 ## Features
@@ -77,8 +99,6 @@ per-observation censoring flag.
 - **Density via Bell polynomials**, computed from a Taylor expansion of the
   generator rather than nested first-order AD.
 - **Symbolic generator inversion** via `oryx`, with bisection + IFT fallback.
-- **Conditional sampling** of nested Archimedean models, made practical by
-  the same higher-order derivatives.
 - **Validity diagnostic** — per-edge `d_c`-monotonicity check for
   cross-family nesting.
 
