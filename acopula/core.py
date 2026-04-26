@@ -2124,32 +2124,38 @@ def _sample_frailty_via_post_widder(
 ) -> jax.Array:
     """Sample from mixing distribution with Laplace transform ψ via inverse-CDF.
 
-    Uses Post-Widder CDF approximation directly, avoiding expensive integration.
-    Since the CDF is monotonically increasing, we can use a fixed bracket.
+    Uses Fixed Talbot CDF approximation directly, avoiding expensive
+    integration.  Bisection runs in a manual ``lax.while_loop`` so that
+    Talbot's small numerical excursions outside ``[0, 1]`` (which fire on
+    discrete-supported frailties such as Frank/AMH/Joe) are clipped
+    rather than raised — optimistix's ``Bisection`` checks the bracket at
+    init time and raises before ``throw=False`` has a chance to suppress
+    it, so we reimplement the loop directly.
     """
-    u = jrandom.uniform(key)
-
-    # CDF is monotonically increasing, so we can use a fixed bracket
-    lo = jnp.array(1e-6)  # Small positive value to avoid division by zero
-    hi = jnp.array(max_cdf_x)
+    u = jrandom.uniform(key, dtype=jnp.float64)
 
     cdf_fun = _fixed_talbot(lambda s: psi(s) / s, 6)
 
-    def root_fun(x, args):
-        return cdf_fun(x) - u
+    lo = jnp.array(jnp.finfo(jnp.float64).tiny, dtype=jnp.float64)
+    hi = jnp.array(max_cdf_x, dtype=jnp.float64)
 
-    # Use optimistix Bisection to find x such that F(x) = u
-    # Bisection requires `lower` and `upper` in options.
-    solver = optx.Bisection(rtol=1e-6, atol=1e-6)
-    sol = optx.root_find(
-        root_fun,
-        solver,
-        y0=(lo + hi) / 2.0,
-        options=dict(lower=lo, upper=hi),
-        max_steps=100,
-        throw=False,
-    )
-    return sol.value
+    def cond_fn(state):
+        lo_s, hi_s, n = state
+        gap = hi_s - lo_s
+        return (n < 150) & (gap > jnp.maximum(hi_s * 1e-10, 1e-15))
+
+    def body_fn(state):
+        lo_s, hi_s, n = state
+        mid = lo_s + (hi_s - lo_s) / 2.0
+        # Talbot inversion can return slightly outside [0, 1] on some
+        # transforms; clip so monotone bisection still converges.
+        cdf_mid = jnp.clip(cdf_fun(mid), 0.0, 1.0)
+        lo_s = jnp.where(cdf_mid < u, mid, lo_s)
+        hi_s = jnp.where(cdf_mid >= u, mid, hi_s)
+        return lo_s, hi_s, n + 1
+
+    lo_f, hi_f, _ = lax.while_loop(cond_fn, body_fn, (lo, hi, jnp.array(0)))
+    return (lo_f + hi_f) / 2.0
 
 
 # =============================
