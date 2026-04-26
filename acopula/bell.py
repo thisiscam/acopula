@@ -1499,6 +1499,17 @@ def _process_beta_for_group(
 
     HLO ops are O(n_children) — independent of M.
     """
+    # When the node has no uncensored leaves (d_v == 0) the polynomial
+    # is the constant 1 and there is nothing to convolve.  Return the
+    # identity beta directly (matches the legacy code's early return at
+    # the top of _compute_beta_for_node).
+    if spec.d_v == 0:
+        return _GroupBetaOutput(
+            beta_batch=jnp.ones((spec.M, 1)),
+            log_scale_batch=jnp.zeros(spec.M),
+            nesting_pen_batch=jnp.zeros(spec.M),
+        )
+
     cop_shared, make_cop = _instantiate_group_copula(spec, params_flat)
     ps_arr = _ps_arr(spec)
 
@@ -1824,6 +1835,13 @@ def _process_beta_for_group_dynamic(
       - Cauchy product uses _cauchy_product_dynamic with item_types and
         lax.switch dispatch; all alphas padded to n = d_v + 1
     """
+    if spec.d_v == 0:
+        return _GroupBetaOutput(
+            beta_batch=jnp.ones((spec.M, 1)),
+            log_scale_batch=jnp.zeros(spec.M),
+            nesting_pen_batch=jnp.zeros(spec.M),
+        )
+
     cop_shared, make_cop = _instantiate_group_copula(spec, params_flat)
     ps_arr = _ps_arr(spec)
     n = spec.d_v + 1
