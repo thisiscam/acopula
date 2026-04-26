@@ -123,14 +123,23 @@ _COMPOSE_REGISTRY_BY_NAME[("Frank", "Frank")] = _frank_compose
 # ---------------------------------------------------------------------------
 
 def _truncated_convolve(a, b):
-    """Truncated polynomial multiplication: (a * b)[:len(a)]."""
-    n = len(a)
-    # Use dot products for each output coefficient
-    result = jnp.zeros(n)
-    for k in range(n):
-        # result[k] = sum_{j=0}^{k} a[j] * b[k-j]
-        result = result.at[k].set(jnp.dot(a[:k+1], b[k::-1]))
-    return result
+    """Truncated polynomial multiplication: (a * b)[:len(a)].
+
+    Uses lax.conv_general_dilated to do the full convolution as a single
+    HLO op, then truncates to the original length.  Replaces a Python
+    `for k in range(n)` that was emitting O(n) update_slice ops at trace
+    time and inflating the compiled XLA program for non-Tier-1 families.
+    """
+    n = a.shape[0]
+    a_pad = jnp.pad(a, (n - 1, 0))
+    out = lax.conv_general_dilated(
+        a_pad[None, None, :],
+        b[::-1][None, None, :],
+        window_strides=(1,),
+        padding="VALID",
+        dimension_numbers=("NCW", "IOW", "NCW"),
+    )[0, 0]
+    return out[:n]
 
 
 def _solve_composition_taylor(
@@ -157,10 +166,13 @@ def _solve_composition_taylor(
     Q_init = jnp.zeros(n).at[1].set(q0)
 
     # Initialize Q power table: C[m] = Q^{m+2} for m=0..n_powers-1
+    # Place q0_powers[m-2] at position (m-2, m) for m in 2..min(d_c, n-1).
+    # Vectorised advanced-indexing scatter — single HLO op instead of an
+    # O(d_c) Python loop emitting individual update_slice ops.
     C_init = jnp.zeros((n_powers, n))
     q0_powers = jnp.power(q0, jnp.arange(2, d_c + 1, dtype=jnp.float64))
-    for m in range(2, min(d_c + 1, n)):
-        C_init = C_init.at[m - 2, m].set(q0_powers[m - 2])
+    m_range = jnp.arange(2, min(d_c + 1, n))
+    C_init = C_init.at[m_range - 2, m_range].set(q0_powers[: m_range.shape[0]])
 
     q_init = jnp.zeros(d_c).at[0].set(q0)
 
