@@ -10,7 +10,7 @@ from scipy import stats
 
 jax.config.update("jax_enable_x64", True)
 
-from acopula.core import copula, defmodel, marginal
+from acopula import compile_model, copula, defmodel, marginal
 
 @copula
 class Clayton:
@@ -63,7 +63,7 @@ def main():
             groups.append(mid(sectors))
         return root(groups)
 
-    model.set_params(jnp.array([1.0, 3.0, 5.0]))
+    cm = compile_model(model, template=jnp.array([1.0, 3.0, 5.0]))
 
     key = jrandom.PRNGKey(42)
     n = 500
@@ -72,7 +72,7 @@ def main():
     print(f"  {n_groups} groups x {n_sectors} sectors x {n_leaves} leaves = {d} dims")
     print(f"  Sampling {n} points...")
 
-    samples = np.asarray(model.sample(key, n, method="rosenblatt"))
+    samples = np.asarray(cm.sample(key, n, jnp.array([1.0, 3.0, 5.0]), method="rosenblatt"))
     print(f"  Shape: {samples.shape}")
     print(f"  Range: [{samples.min():.6f}, {samples.max():.6f}]")
     print(f"  NaN: {np.any(np.isnan(samples))}")

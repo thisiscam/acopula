@@ -1,7 +1,7 @@
 import jax
 import jax.numpy as jnp
 import pytest
-from acopula import defmodel, marginal, copula
+from acopula import compile_model, defmodel, marginal, copula
 import jax.scipy.special
 from oryx import core as oryx_core
 # =============================
@@ -595,12 +595,9 @@ def test_consistency(name, model, ref_fn, params, u_obs, force_integral_method):
     ils_kwargs = {"ils_method": "fixed_talbot", "ils_params": {"M": 24}}
 
     # 1. acopula implementation
-    acopula_ll = model.log_likelihood(
-        u_obs,
-        params=params,
-        force_integral_method=force_integral_method,
-        **ils_kwargs,
-    )
+    method = "integral" if force_integral_method else "auto"
+    acopula_ll = compile_model(model, template=params, method=method,
+                               **ils_kwargs).eval(u_obs, params)
 
     # 2. reference implementation
     ref_ll = compute_exact_mixed_partial(lambda x: ref_fn(x, params), u_obs)

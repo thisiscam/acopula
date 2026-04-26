@@ -14,7 +14,7 @@ from scipy import stats
 
 jax.config.update("jax_enable_x64", True)
 
-from acopula.core import copula, defmodel, marginal
+from acopula import compile_model, copula, defmodel, marginal
 
 
 @copula
@@ -71,8 +71,8 @@ def make_nested_model(outer_cls, outer_theta, inner_cls, inner_theta,
         ])
 
     params = jnp.array([outer_theta] + [inner_theta] * n_sectors)
-    model.set_params(params)
-    return model, params, d
+    cm = compile_model(model, template=params)
+    return cm, params, d
 
 
 def kendall_tau_matrix(samples):
@@ -92,13 +92,13 @@ def test_marginal_uniformity():
     print("TEST 1: Marginal uniformity (Rosenblatt)")
     print("=" * 60)
 
-    model, params, d = make_nested_model(
+    cm, params, d = make_nested_model(
         Clayton, 1.0, Clayton, 3.0, n_sectors=2, leaves_per_sector=3
     )
 
     key = jrandom.PRNGKey(42)
     n = 1000
-    samples = model.sample(key, n, params=params, method="rosenblatt")
+    samples = cm.sample(key, n, params, method="rosenblatt")
     samples_np = np.array(samples)
 
     print(f"Model: Clayton(1.0) / Clayton(3.0), 2 sectors x 3 leaves = {d}d")
@@ -122,7 +122,7 @@ def test_mo_vs_rosenblatt():
     print("TEST 2a: MO vs Rosenblatt (Kendall tau comparison)")
     print("=" * 60)
 
-    model, params, d = make_nested_model(
+    cm, params, d = make_nested_model(
         Clayton, 1.0, Clayton, 3.0, n_sectors=2, leaves_per_sector=3
     )
 
@@ -136,13 +136,13 @@ def test_mo_vs_rosenblatt():
     import time
     print("\nSampling with MO...")
     t0 = time.time()
-    samples_mo = model.sample(key_mo, n, params=params, method="marshall_olkin")
+    samples_mo = cm.sample(key_mo, n, params, method="marshall_olkin")
     t_mo = time.time() - t0
     print(f"  MO time: {t_mo:.1f}s")
 
     print("Sampling with Rosenblatt...")
     t0 = time.time()
-    samples_ros = model.sample(key_ros, n, params=params, method="rosenblatt")
+    samples_ros = cm.sample(key_ros, n, params, method="rosenblatt")
     t_ros = time.time() - t0
     print(f"  Rosenblatt time: {t_ros:.1f}s")
 
@@ -180,7 +180,7 @@ def test_kendall_tau_structure():
     tau_inner_theory = inner_theta / (inner_theta + 2)  # 0.6
     tau_outer_theory = outer_theta / (outer_theta + 2)  # 0.333
 
-    model, params, d = make_nested_model(
+    cm, params, d = make_nested_model(
         Clayton, outer_theta, Clayton, inner_theta,
         n_sectors=2, leaves_per_sector=3
     )
@@ -195,7 +195,7 @@ def test_kendall_tau_structure():
 
     import time
     t0 = time.time()
-    samples = model.sample(key, n, params=params, method="rosenblatt")
+    samples = cm.sample(key, n, params, method="rosenblatt")
     elapsed = time.time() - t0
     print(f"Sampling time: {elapsed:.1f}s")
 
@@ -243,7 +243,7 @@ def test_cross_family():
 
     # Frank(0.5) outer / Clayton(2.0) inner
     # This pair passes 8-monotonicity check per our nesting analysis
-    model, params, d = make_nested_model(
+    cm, params, d = make_nested_model(
         Frank, 0.5, Clayton, 2.0, n_sectors=2, leaves_per_sector=3
     )
 
@@ -256,7 +256,7 @@ def test_cross_family():
     print("\nSampling with Rosenblatt...")
     import time
     t0 = time.time()
-    samples = model.sample(key, n, params=params, method="rosenblatt")
+    samples = cm.sample(key, n, params, method="rosenblatt")
     t_ros = time.time() - t0
     samples_np = np.array(samples)
     print(f"  Time: {t_ros:.1f}s")

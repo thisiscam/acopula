@@ -3,9 +3,21 @@
 import jax
 import jax.numpy as jnp
 import pytest
-from acopula import defmodel, marginal, copula
+from acopula import compile_model, defmodel, marginal, copula
 
 jax.config.update("jax_enable_x64", True)
+
+
+def _ll(model, obs, params, *, method="auto", ils_method="cohen", ils_params=None):
+    """Test helper bridging the legacy ``model.log_likelihood(obs, params=...)``
+    pattern to the pure-functional ``compile_model`` API.  The wrapper
+    rebuilds the compiled model on each call (fine for unit tests; in
+    production code reuse a single :class:`CompiledModel` across calls)."""
+    cm = compile_model(
+        model, template=params, method=method,
+        ils_method=ils_method, ils_params=ils_params,
+    )
+    return cm.eval(obs, params)
 
 
 # ============================
@@ -139,7 +151,7 @@ def test_bell_vs_grad_continuous(outer_cls, inner_cls, theta0, theta1):
     model = make_nested_2x2(outer_cls, inner_cls)
     params = {"theta0": theta0, "theta1": theta1}
 
-    ll_bell = model.log_likelihood(U_OBS, params=params, method="bell")
+    ll_bell = _ll(model, U_OBS, params, method="bell")
 
     ref_fn = make_ref_2x2(outer_cls, inner_cls)
     ll_grad = _brute_force_log_density(
@@ -163,7 +175,7 @@ def test_bell_vs_grad_discrete(outer_cls, inner_cls, theta0, theta1):
     model = make_nested_2x2(outer_cls, inner_cls)
     params = {"theta0": theta0, "theta1": theta1}
 
-    ll_bell = model.log_likelihood(U_OBS, params=params, method="bell")
+    ll_bell = _ll(model, U_OBS, params, method="bell")
 
     ref_fn = make_ref_2x2(outer_cls, inner_cls)
     ll_grad = _brute_force_log_density(
@@ -190,12 +202,9 @@ def test_bell_vs_integral(outer_cls, inner_cls, theta0, theta1):
     model = make_nested_2x2(outer_cls, inner_cls)
     params = {"theta0": theta0, "theta1": theta1}
 
-    ll_bell = model.log_likelihood(U_OBS, params=params, method="bell")
-    ll_int = model.log_likelihood(
-        U_OBS, params=params,
-        ils_method="fixed_talbot", ils_params={"M": 24},
-        force_integral_method=True,
-    )
+    ll_bell = _ll(model, U_OBS, params, method="bell")
+    ll_int = _ll(model, U_OBS, params, method="integral",
+                 ils_method="fixed_talbot", ils_params={"M": 24})
 
     assert jnp.allclose(ll_bell, ll_int, atol=1e-4), (
         f"Bell={float(ll_bell)}, Integral={float(ll_int)}, "
@@ -216,8 +225,8 @@ def test_bell_single_layer():
                   marginal(Uniform(), obs=u[2]), marginal(Uniform(), obs=u[3])])
 
     params = {"theta": 2.0}
-    ll_bell = model.log_likelihood(U_OBS, params=params, method="bell")
-    ll_single = model.log_likelihood(U_OBS, params=params)  # uses single-layer path
+    ll_bell = _ll(model, U_OBS, params, method="bell")
+    ll_single = _ll(model, U_OBS, params)  # uses single-layer path
 
     assert jnp.allclose(ll_bell, ll_single, atol=1e-8), (
         f"Bell={float(ll_bell)}, Single={float(ll_single)}"
@@ -240,7 +249,7 @@ def test_bell_three_level():
     params = {"theta_r": 2.0, "theta_a": 3.0}
     u_obs = jnp.array([0.3, 0.5, 0.7])
 
-    ll_bell = model.log_likelihood(u_obs, params=params, method="bell")
+    ll_bell = _ll(model, u_obs, params, method="bell")
 
     # Brute-force reference
     from oryx import core as oryx_core
@@ -275,7 +284,7 @@ def test_bell_diff_params_same_structure():
         return f0([c1, c2])
 
     params = {"theta0": 2.0, "theta1": 3.0, "theta2": 4.0}
-    ll_bell = model.log_likelihood(U_OBS, params=params, method="bell")
+    ll_bell = _ll(model, U_OBS, params, method="bell")
 
     from oryx import core as oryx_core
     def ref_fn(u):
@@ -312,7 +321,7 @@ def test_bell_asymmetric_3_plus_2():
 
     u_obs = jnp.array([0.2, 0.4, 0.6, 0.3, 0.7])
     params = {"theta0": 1.5, "theta1": 3.0}
-    ll_bell = model.log_likelihood(u_obs, params=params, method="bell")
+    ll_bell = _ll(model, u_obs, params, method="bell")
 
     from oryx import core as oryx_core
     def ref_fn(u):
@@ -341,7 +350,7 @@ def test_bell_asymmetric_sector_plus_leaf():
 
     u_obs = jnp.array([0.3, 0.5, 0.7])
     params = {"theta0": 2.0, "theta1": 3.0}
-    ll_bell = model.log_likelihood(u_obs, params=params, method="bell")
+    ll_bell = _ll(model, u_obs, params, method="bell")
 
     from oryx import core as oryx_core
     def ref_fn(u):
@@ -376,7 +385,7 @@ def test_bell_four_sectors():
 
     u_obs = jnp.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8])
     params = {"theta0": 1.0, "theta1": 3.0}
-    ll_bell = model.log_likelihood(u_obs, params=params, method="bell")
+    ll_bell = _ll(model, u_obs, params, method="bell")
 
     from oryx import core as oryx_core
     def ref_fn(u):
@@ -409,7 +418,7 @@ def test_bell_mixed_families():
         return f0([c1, c2])
 
     params = {"theta0": 1.5, "theta_g": 2.0, "theta_c": 3.0}
-    ll_bell = model.log_likelihood(U_OBS, params=params, method="bell")
+    ll_bell = _ll(model, U_OBS, params, method="bell")
 
     from oryx import core as oryx_core
     def ref_fn(u):
@@ -444,7 +453,7 @@ def test_bell_deep_two_branches():
         return f_r([a, b])
 
     params = {"theta_r": 1.5, "theta_a": 3.0}
-    ll_bell = model.log_likelihood(U_OBS, params=params, method="bell")
+    ll_bell = _ll(model, U_OBS, params, method="bell")
 
     from oryx import core as oryx_core
     def ref_fn(u):
@@ -483,7 +492,7 @@ def test_bell_true_3_layer_chain():
 
     params = {"theta_r": 1.5, "theta_m": 2.5, "theta_i": 4.0}
     u_obs = jnp.array([0.3, 0.7])
-    ll_bell = model.log_likelihood(u_obs, params=params, method="bell")
+    ll_bell = _ll(model, u_obs, params, method="bell")
 
     from oryx import core as oryx_core
     def ref_fn(u):
@@ -519,7 +528,7 @@ def test_bell_3_layer_branching():
         return f_r([mid])
 
     params = {"theta_r": 1.5, "theta_m": 2.5, "theta_i": 4.0}
-    ll_bell = model.log_likelihood(U_OBS, params=params, method="bell")
+    ll_bell = _ll(model, U_OBS, params, method="bell")
 
     from oryx import core as oryx_core
     def ref_fn(u):
@@ -557,7 +566,7 @@ def test_bell_3_layer_mixed():
         return f_r([mid, marginal(Uniform(), obs=u[3])])
 
     params = {"theta_r": 1.5, "theta_m": 2.5, "theta_i": 4.0}
-    ll_bell = model.log_likelihood(U_OBS, params=params, method="bell")
+    ll_bell = _ll(model, U_OBS, params, method="bell")
 
     from oryx import core as oryx_core
     def ref_fn(u):
@@ -602,7 +611,7 @@ def test_bell_3_layer_full_branching():
 
     u_obs = jnp.array([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8])
     params = {"theta_r": 1.5, "theta_m": 2.5, "theta_i": 4.0}
-    ll_bell = model.log_likelihood(u_obs, params=params, method="bell")
+    ll_bell = _ll(model, u_obs, params, method="bell")
 
     from oryx import core as oryx_core
     def ref_fn(u):
@@ -643,7 +652,7 @@ def test_bell_3x2():
 
     u_obs = jnp.array([0.1, 0.3, 0.4, 0.6, 0.7, 0.9])
     params = {"theta0": 1.5, "theta1": 3.0}
-    ll_bell = model.log_likelihood(u_obs, params=params, method="bell")
+    ll_bell = _ll(model, u_obs, params, method="bell")
 
     from oryx import core as oryx_core
     def ref_fn(u):

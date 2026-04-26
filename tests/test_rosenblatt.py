@@ -14,7 +14,7 @@ from scipy import stats
 
 jax.config.update("jax_enable_x64", True)
 
-from acopula.core import copula, defmodel, marginal
+from acopula import compile_model, copula, defmodel, marginal
 
 # Copula definitions
 @copula
@@ -64,13 +64,14 @@ class UniformDist:
 
 
 def make_flat_model(copula_cls, theta, d):
-    """Create a d-dimensional non-nested model."""
+    """Create a d-dimensional non-nested compiled model + flat params."""
     @defmodel
     def model(params, obs):
         cop = copula_cls(params[0])
         return cop([marginal(UniformDist(), obs=obs[i]) for i in range(d)])
-    model.set_params(jnp.array([theta]))
-    return model
+    params = jnp.array([theta])
+    cm = compile_model(model, template=params)
+    return cm, params
 
 
 def make_nested_2level(outer_cls, outer_theta, inner_cls, inner_theta,
@@ -100,8 +101,9 @@ def make_nested_2level(outer_cls, outer_theta, inner_cls, inner_theta,
             leaf_idx += leaves_per_group
         return outer(children)
 
-    model.set_params(jnp.array([outer_theta, inner_theta]))
-    return model
+    params = jnp.array([outer_theta, inner_theta])
+    cm = compile_model(model, template=params)
+    return cm, params
 
 
 def make_nested_3level(root_cls, root_theta, mid_cls, mid_theta,
@@ -127,8 +129,9 @@ def make_nested_3level(root_cls, root_theta, mid_cls, mid_theta,
             groups.append(mid(sectors))
         return root(groups)
 
-    model.set_params(jnp.array([root_theta, mid_theta, leaf_theta]))
-    return model
+    params = jnp.array([root_theta, mid_theta, leaf_theta])
+    cm = compile_model(model, template=params)
+    return cm, params
 
 
 def check_samples(samples, name, d, expected_tau_range=None):
@@ -170,11 +173,11 @@ def test_flat_copula(name, copula_cls, theta, d=5, n=2000):
     print(f"FLAT: {name}(theta={theta}), d={d}, n={n}")
     print(f"{'='*60}")
 
-    model = make_flat_model(copula_cls, theta, d)
+    cm, params = make_flat_model(copula_cls, theta, d)
     key = jrandom.PRNGKey(42)
 
     print("  Sampling with Rosenblatt...")
-    samples = np.asarray(model.sample(key, n, method="rosenblatt"))
+    samples = np.asarray(cm.sample(key, n, params, method="rosenblatt"))
     return check_samples(samples, name, d)
 
 
@@ -189,16 +192,16 @@ def test_nested_2level(name, outer_cls, outer_theta, inner_cls, inner_theta,
     print(f"  {groups} groups x {leaves_per_group} leaves = {d} dims, n={n}")
     print(f"{'='*60}")
 
-    model = make_nested_2level(outer_cls, outer_theta, inner_cls, inner_theta,
+    cm, params = make_nested_2level(outer_cls, outer_theta, inner_cls, inner_theta,
                                groups, leaves_per_group)
     key = jrandom.PRNGKey(42)
 
     print("  Sampling with Rosenblatt...")
-    samples_r = np.asarray(model.sample(key, n, method="rosenblatt"))
+    samples_r = np.asarray(cm.sample(key, n, params, method="rosenblatt"))
     ok_r = check_samples(samples_r, name + " (Rosenblatt)", d)
 
     print("\n  Sampling with Marshall-Olkin...")
-    samples_mo = np.asarray(model.sample(key, n, method="marshall_olkin"))
+    samples_mo = np.asarray(cm.sample(key, n, params, method="marshall_olkin"))
     ok_mo = check_samples(samples_mo, name + " (Marshall-Olkin)", d)
 
     # Cross-method comparison: within-group tau should be higher than between-group
@@ -234,7 +237,7 @@ def test_nested_3level(n=2000):
     print(f"  {n_groups} groups x {n_sectors} sectors x {n_leaves} leaves = {d} dims, n={n}")
     print(f"{'='*60}")
 
-    model = make_nested_3level(
+    cm, params = make_nested_3level(
         Clayton, 1.0,   # root
         Gumbel, 3.0,    # mid
         Clayton, 5.0,   # leaf
@@ -243,7 +246,7 @@ def test_nested_3level(n=2000):
     key = jrandom.PRNGKey(42)
 
     print("  Sampling with Rosenblatt...")
-    samples_r = np.asarray(model.sample(key, n, method="rosenblatt"))
+    samples_r = np.asarray(cm.sample(key, n, params, method="rosenblatt"))
     ok = check_samples(samples_r, "3-level", d)
 
     # Check hierarchical tau structure:
