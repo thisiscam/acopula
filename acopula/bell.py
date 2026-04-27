@@ -935,6 +935,7 @@ def _root_assembly(
     t_r: jax.Array,
     d: int,
     effective_order=None,
+    log_jet: bool = False,
 ) -> jax.Array:
     """Compute log|sum_k beta[k] * psi_r^{(k)}(t_r)|.
 
@@ -945,42 +946,73 @@ def _root_assembly(
             computes Taylor coefficients up to this order; higher entries
             are left as zero.  Saves O((d/d_unc)^2) work when many
             leaves are censored.  When None, computes all d coefficients.
+        log_jet: when True, run the inner jet expansion through the
+            log-space jet rules (jet_array's `log_space=True` path). The
+            forward Taylor coefficients are computed as (sign, log|c|)
+            pairs internally; this avoids the denormal/overflow cascade
+            in backward that produces NaN gradients for Frank-/Joe-type
+            generators at high d. Default False (raw float pipeline).
     """
     if d == 0:
         return _log(jnp.abs(root_cop.generator(t_r)))
 
-    # Get Taylor coefficients of psi_r at t_r (jet returns primal + series)
+    # Get Taylor coefficients of psi_r at t_r.
+    # When log_jet=True we keep them in (sign, log|c|) form end-to-end so
+    # the downstream `_log(abs(taylor))` step (whose JVP would materialise
+    # 1/abs(taylor) and overflow on denormals) is skipped entirely.
     series_in = jnp.zeros(d).at[0].set(1.0)
-    primal_out, series_out = jet_array.jet(
-        root_cop.generator, (t_r,), (series_in,),
-        effective_order=effective_order,
-    )
-    # series_out[k-1] = psi_r^{(k)}(t_r) / k!
+    if log_jet:
+        primal_out, series_out_log = jet_array.jet(
+            root_cop.generator, (t_r,), (series_in,),
+            effective_order=effective_order,
+            log_space=True, return_log_series=True,
+        )
+        # series_out_log is a LogSeries with shape (d, ...) for each field.
+        # Build the full (d+1, ...) (sign, log_mag) for [primal, series...].
+        primal_sign = jnp.sign(primal_out)
+        primal_abs = jnp.abs(primal_out)
+        primal_log = jnp.where(primal_abs > 0, jnp.log(primal_abs),
+                               jnp.log(jnp.finfo(jnp.float64).tiny))
+        twp_sign = jnp.concatenate([primal_sign[None], series_out_log.sign])
+        twp_log_abs = jnp.concatenate([primal_log[None], series_out_log.log_mag])
+    else:
+        primal_out, series_out = jet_array.jet(
+            root_cop.generator, (t_r,), (series_in,),
+            effective_order=effective_order,
+            log_space=False,
+        )
+        # series_out[k-1] = psi_r^{(k)}(t_r) / k!
+        taylor_with_primal = jnp.concatenate([
+            jnp.array([primal_out]),
+            jnp.asarray(series_out),
+        ])
+        twp_sign = jnp.sign(taylor_with_primal)
+        # Mask zeros to avoid log(0); rely on the final `nonzero` mask below
+        # to zero out the contributions.
+        twp_abs = jnp.abs(taylor_with_primal)
+        twp_log_abs = jnp.where(twp_abs > 0, _log(twp_abs),
+                                jnp.log(jnp.finfo(jnp.float64).tiny))
 
     # Work in log domain to avoid overflow for large d.
     # We need log|sum_k beta[k] * psi_r^{(k)}(t_r)| where
     # psi_r^{(k)}(t_r) = taylor_with_primal[k] * k!
     ks = jnp.arange(d + 1, dtype=jnp.float64)
     log_factorials = jax.scipy.special.gammaln(ks + 1)
-    taylor_with_primal = jnp.concatenate([
-        jnp.array([primal_out]),
-        jnp.asarray(series_out),
-    ])
 
     beta_slice = beta[:d + 1]
-    twp_slice = taylor_with_primal[:d + 1]
+    twp_sign_slice = twp_sign[:d + 1]
+    twp_log_slice = twp_log_abs[:d + 1]
 
-    # Mask out zero terms to avoid log(0) = -inf gradient issues
-    nonzero = (beta_slice != 0) & (twp_slice != 0)
+    # Mask out zero terms (whose log_abs is sentinel _LOG_TINY) so they
+    # don't contribute to the signed logsumexp below.
+    nonzero = (beta_slice != 0) & (twp_sign_slice != 0)
     safe_beta = jnp.where(nonzero, jnp.abs(beta_slice), 1.0)
-    safe_twp = jnp.where(nonzero, jnp.abs(twp_slice), 1.0)
 
     # log|term_k| = log|beta[k]| + log|taylor[k]| + gammaln(k+1)
-    log_abs_terms = _log(safe_beta) + _log(safe_twp) + log_factorials
+    log_abs_terms = _log(safe_beta) + twp_log_slice + log_factorials
     _LOG_TINY_LOCAL = jnp.log(jnp.finfo(jnp.float64).tiny)
-    # Zero out masked terms so they contribute nothing to logsumexp
     log_abs_terms = jnp.where(nonzero, log_abs_terms, _LOG_TINY_LOCAL)
-    signs = jnp.sign(beta_slice) * jnp.sign(twp_slice)
+    signs = jnp.sign(beta_slice) * twp_sign_slice
 
     # Signed log-sum-exp: shift by max for numerical stability
     max_log = jnp.max(log_abs_terms)
@@ -1793,6 +1825,7 @@ def _log_likelihood_bell(
     params_flat: jax.Array,
     censored_mask: Optional[jax.Array] = None,
     survival: bool = False,
+    log_jet: bool = False,
 ) -> Tuple[jax.Array, jax.Array, jax.Array]:
     """Stage-group batched log-likelihood for nested copulas.
 
@@ -1872,6 +1905,7 @@ def _log_likelihood_bell(
     log_root = _root_assembly(
         root_beta, root_cop, root_t_v, root_d_v,
         effective_order=root_eff_order,
+        log_jet=log_jet,
     ) + root_log_scale
 
     if dynamic:

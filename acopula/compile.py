@@ -167,6 +167,7 @@ def _build_ll_fn(
     with_censored_mask: bool,
     ils_method: str,
     ils_params: Optional[dict],
+    log_jet: bool = False,
 ) -> Callable:
     """Construct the raw (un-jit'd) log-likelihood evaluator that
     closes over the structural graph.
@@ -191,6 +192,7 @@ def _build_ll_fn(
             _, log_val, _ = _log_likelihood_bell(
                 graph, obs, flat_params,
                 censored_mask=censored_mask, survival=survival,
+                log_jet=log_jet,
             )
             return log_val
 
@@ -201,7 +203,7 @@ def _build_ll_fn(
 
         def ll_fn(obs, flat_params):
             _, log_val, _ = _log_likelihood_bell(
-                graph, obs, flat_params, survival=survival,
+                graph, obs, flat_params, survival=survival, log_jet=log_jet,
             )
             return log_val
     elif depth <= 1 and method != "integral":
@@ -362,6 +364,7 @@ def compile_model(
     with_censored_mask: bool = False,
     ils_method: str = "cohen",
     ils_params: Optional[dict] = None,
+    log_jet: bool = False,
 ) -> CompiledModel:
     """Compile a copula composition function into a reusable evaluator.
 
@@ -416,6 +419,7 @@ def compile_model(
         with_censored_mask=with_censored_mask,
         ils_method=ils_method,
         ils_params=ils_params,
+        log_jet=log_jet,
     )
     ll_fn_jit = jax.jit(raw_ll)
 
