@@ -956,42 +956,61 @@ def _root_assembly(
     if d == 0:
         return _log(jnp.abs(root_cop.generator(t_r)))
 
-    # Get Taylor coefficients of psi_r at t_r.
-    # When log_jet=True we keep them in (sign, log|c|) form end-to-end so
-    # the downstream `_log(abs(taylor))` step (whose JVP would materialise
-    # 1/abs(taylor) and overflow on denormals) is skipped entirely.
-    series_in = jnp.zeros(d).at[0].set(1.0)
-    if log_jet:
-        primal_out, series_out_log = jet_array.jet(
-            root_cop.generator, (t_r,), (series_in,),
-            effective_order=effective_order,
-            log_space=True, return_log_series=True,
-        )
-        # series_out_log is a LogSeries with shape (d, ...) for each field.
-        # Build the full (d+1, ...) (sign, log_mag) for [primal, series...].
-        primal_sign = jnp.sign(primal_out)
-        primal_abs = jnp.abs(primal_out)
-        primal_log = jnp.where(primal_abs > 0, jnp.log(primal_abs),
-                               jnp.log(jnp.finfo(jnp.float64).tiny))
-        twp_sign = jnp.concatenate([primal_sign[None], series_out_log.sign])
-        twp_log_abs = jnp.concatenate([primal_log[None], series_out_log.log_mag])
-    else:
-        primal_out, series_out = jet_array.jet(
-            root_cop.generator, (t_r,), (series_in,),
-            effective_order=effective_order,
-            log_space=False,
-        )
-        # series_out[k-1] = psi_r^{(k)}(t_r) / k!
-        taylor_with_primal = jnp.concatenate([
-            jnp.array([primal_out]),
-            jnp.asarray(series_out),
-        ])
-        twp_sign = jnp.sign(taylor_with_primal)
-        # Mask zeros to avoid log(0); rely on the final `nonzero` mask below
-        # to zero out the contributions.
-        twp_abs = jnp.abs(taylor_with_primal)
+    # Per-family Taylor override: families whose ψ has a numerically
+    # stable series form (e.g. Laplace transforms of nonneg distributions
+    # via the frailty representation) can provide
+    # ``psi_taylor_coefficients(t, k_max)`` to bypass jet entirely. This
+    # avoids the chain-rule cancellations Taylor-mode AD on ψ's closed
+    # form produces at high derivative order — relevant for AMH past
+    # d≈30 in float64. Returning None means "use jet".
+    custom_taylor = root_cop.psi_taylor_coefficients(t_r, d)
+    if custom_taylor is not None:
+        # custom_taylor[k] = psi^{(k)}(t_r) / k!, shape (d+1,).
+        twp_sign = jnp.sign(custom_taylor)
+        twp_abs = jnp.abs(custom_taylor)
         twp_log_abs = jnp.where(twp_abs > 0, _log(twp_abs),
                                 jnp.log(jnp.finfo(jnp.float64).tiny))
+        # Skip the jet path entirely. log_jet has no work to do here
+        # because the override returned float64 coefs directly; if the
+        # override itself is numerically stable (no cancellations) the
+        # downstream signed-LSE handles things from here.
+    else:
+        # Get Taylor coefficients of psi_r at t_r via jet.
+        # When log_jet=True we keep them in (sign, log|c|) form end-to-end so
+        # the downstream `_log(abs(taylor))` step (whose JVP would materialise
+        # 1/abs(taylor) and overflow on denormals) is skipped entirely.
+        series_in = jnp.zeros(d).at[0].set(1.0)
+        if log_jet:
+            primal_out, series_out_log = jet_array.jet(
+                root_cop.generator, (t_r,), (series_in,),
+                effective_order=effective_order,
+                log_space=True, return_log_series=True,
+            )
+            # series_out_log is a LogSeries with shape (d, ...) for each field.
+            # Build the full (d+1, ...) (sign, log_mag) for [primal, series...].
+            primal_sign = jnp.sign(primal_out)
+            primal_abs = jnp.abs(primal_out)
+            primal_log = jnp.where(primal_abs > 0, jnp.log(primal_abs),
+                                   jnp.log(jnp.finfo(jnp.float64).tiny))
+            twp_sign = jnp.concatenate([primal_sign[None], series_out_log.sign])
+            twp_log_abs = jnp.concatenate([primal_log[None], series_out_log.log_mag])
+        else:
+            primal_out, series_out = jet_array.jet(
+                root_cop.generator, (t_r,), (series_in,),
+                effective_order=effective_order,
+                log_space=False,
+            )
+            # series_out[k-1] = psi_r^{(k)}(t_r) / k!
+            taylor_with_primal = jnp.concatenate([
+                jnp.array([primal_out]),
+                jnp.asarray(series_out),
+            ])
+            twp_sign = jnp.sign(taylor_with_primal)
+            # Mask zeros to avoid log(0); rely on the final `nonzero` mask below
+            # to zero out the contributions.
+            twp_abs = jnp.abs(taylor_with_primal)
+            twp_log_abs = jnp.where(twp_abs > 0, _log(twp_abs),
+                                    jnp.log(jnp.finfo(jnp.float64).tiny))
 
     # Work in log domain to avoid overflow for large d.
     # We need log|sum_k beta[k] * psi_r^{(k)}(t_r)| where
