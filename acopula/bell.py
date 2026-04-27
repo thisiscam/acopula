@@ -83,6 +83,9 @@ def _log(x):
 # ---------------------------------------------------------------------------
 
 _SQRT_TINY = jnp.sqrt(jnp.finfo(jnp.float64).tiny)  # ~1.49e-154
+# Safe upper bound for log(x) before exp(x) overflows: log(finfo.max) ~ 709.78.
+# Leave a small margin to avoid edge-case overflow in the subsequent multiplies.
+_LOG_FLOAT64_SAFE = 708.0
 
 
 def _normalize_poly(arr: jax.Array) -> Tuple[jax.Array, jax.Array]:
@@ -352,9 +355,14 @@ def _poly_power_alpha(
     log_abs_p = jnp.where(abs_p > 0, _log(safe_abs_p), _LOG_TINY)
     log_rescaled = log_abs_p - js * log_abs_p0
     p_hat = jnp.sign(p[:d_c]) * (sign_p0 ** js) * jnp.exp(
-        jnp.clip(log_rescaled, -500, 500))
-    # Zero out entries where original p was zero
+        jnp.clip(log_rescaled, -_LOG_FLOAT64_SAFE, _LOG_FLOAT64_SAFE))
+    # Zero out entries where original p was a true zero.
     p_hat = jnp.where(abs_p > 0, p_hat, 0.0)
+    # PROPAGATE NaN if the input had any NaN -- the Nelsen9 d>=20 regression
+    # was hidden for months because the line above (with `abs_p > 0`
+    # evaluating False on NaN) silently zeroed NaN compose coefficients,
+    # producing fake-finite log-likelihoods.
+    p_hat = jnp.where(jnp.isnan(p[:d_c]), p[:d_c], p_hat)
 
     p_hat_padded = jnp.zeros(n).at[1:n].set(p_hat)
 
@@ -427,7 +435,8 @@ def _poly_power_alpha(
     # Find global reference scale and build normalized alpha
     ref_log = jnp.max(log_abs_alpha_arr)
     alpha_values = sign_alpha_arr * jnp.exp(
-        jnp.clip(log_abs_alpha_arr - ref_log, -500, 500))
+        jnp.clip(log_abs_alpha_arr - ref_log,
+                 -_LOG_FLOAT64_SAFE, _LOG_FLOAT64_SAFE))
 
     alpha = jnp.zeros(n).at[1:n].set(alpha_values)
 
