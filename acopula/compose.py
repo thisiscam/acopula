@@ -268,13 +268,31 @@ def compute_composition_taylor(
         return jnp.asarray(p)
 
     # Tier 3: implicit differentiation (default)
-    _, p_inner = jet_array.jet(
-        child_cop.generator, (t_child,), (series_in,),
-        effective_order=effective_order,
-    )
+    # Per-family Taylor override (see Copula.generator_taylor_coefficients).
+    # When a family ships a series-form Taylor expansion that avoids
+    # high-order cancellation, we use it here in place of the jet on
+    # `cop.generator`. The override returns
+    # ``[ψ(t), ψ'(t)/1!, …, ψ^{(d_c)}(t)/d_c!]`` (length d_c+1); the
+    # downstream ``_solve_composition_taylor`` consumes ``p[k] =
+    # ψ^{(k+1)}(t)/(k+1)!`` (length d_c, the derivative-side slice
+    # without the primal), so we drop the [0] entry to match.
+    p_inner_full = child_cop.generator_taylor_coefficients(t_child, d_c)
+    if p_inner_full is None:
+        _, p_inner = jet_array.jet(
+            child_cop.generator, (t_child,), (series_in,),
+            effective_order=effective_order,
+        )
+    else:
+        p_inner = p_inner_full[1:]
+
     h_0 = parent_cop.generator_inv(child_cop.generator(t_child))
-    _, p_outer = jet_array.jet(
-        parent_cop.generator, (h_0,), (series_in,),
-        effective_order=effective_order,
-    )
+    p_outer_full = parent_cop.generator_taylor_coefficients(h_0, d_c)
+    if p_outer_full is None:
+        _, p_outer = jet_array.jet(
+            parent_cop.generator, (h_0,), (series_in,),
+            effective_order=effective_order,
+        )
+    else:
+        p_outer = p_outer_full[1:]
+
     return _solve_composition_taylor(jnp.asarray(p_inner), jnp.asarray(p_outer), d_c)

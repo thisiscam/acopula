@@ -959,11 +959,11 @@ def _root_assembly(
     # Per-family Taylor override: families whose ψ has a numerically
     # stable series form (e.g. Laplace transforms of nonneg distributions
     # via the frailty representation) can provide
-    # ``psi_taylor_coefficients(t, k_max)`` to bypass jet entirely. This
-    # avoids the chain-rule cancellations Taylor-mode AD on ψ's closed
-    # form produces at high derivative order — relevant for AMH past
-    # d≈30 in float64. Returning None means "use jet".
-    custom_taylor = root_cop.psi_taylor_coefficients(t_r, d)
+    # ``generator_taylor_coefficients(t, k_max)`` to bypass jet entirely.
+    # This avoids the chain-rule cancellations Taylor-mode AD on ψ's
+    # closed form produces at high derivative order — relevant for AMH
+    # past d≈30 in float64. Returning None means "use jet".
+    custom_taylor = root_cop.generator_taylor_coefficients(t_r, d)
     if custom_taylor is not None:
         # custom_taylor[k] = psi^{(k)}(t_r) / k!, shape (d+1,).
         twp_sign = jnp.sign(custom_taylor)

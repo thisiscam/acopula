@@ -68,7 +68,9 @@ class Copula:
         """
         return None  # sentinel: use jet
 
-    def psi_taylor_coefficients(self, t: jax.Array, k_max: int) -> jax.Array:
+    def generator_taylor_coefficients(
+        self, t: jax.Array, k_max: int
+    ) -> jax.Array:
         """Return Taylor coefficients ``[ψ(t), ψ'(t)/1!, …, ψ^{(k_max)}(t)/k_max!]``.
 
         Override this when the closed-form ψ has a numerically stable
@@ -80,10 +82,14 @@ class Copula:
 
             ψ^{(k)}(t) = (-1)^k Σ_{x=1}^∞ x^k (1−θ) θ^{x−1} e^{−tx}
 
-        The default returns ``None``, telling the bell pipeline to use
-        ``jet_array.jet`` on the closed-form generator, which is
-        correct but loses precision when ψ's derivatives have large
-        alternating-sign cancellations (e.g. AMH past d≈30 in float64).
+        The framework consults this hook everywhere it would otherwise
+        call ``jet_array.jet`` on ``self.generator`` to get a Taylor
+        expansion: the root density (``bell._root_assembly``) and the
+        nesting composition (``compose.compute_composition_taylor``).
+        Returning ``None`` (the default) tells those call sites to
+        fall back to the jet path, which is correct but loses
+        precision when ψ's derivatives have large alternating-sign
+        cancellations (e.g. AMH past d≈30 in float64).
 
         Args:
             t: scalar input point.
