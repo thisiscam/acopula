@@ -167,8 +167,12 @@ def _solve_composition_taylor(
     Matching e^n: a[0]*q[n-1] + [e^n from a[1]*Q^2 + ...] = b[n-1]
     The correction terms only involve q[0]..q[n-2], giving a triangular system.
 
-    Uses lax.scan with unroll hint: fully unrolled for small d_c (typical
-    sector sizes 5-10), compact loop for larger d_c.
+    The implementation maintains C[m, j] = Q^{m+2}[j] (the j-th coefficient
+    of Q^{m+2}) as Q's coefficients are filled in.  At outer step k, Q has
+    finalised coefficients at slots 1..k+1, and the algorithm updates only
+    column j=k+2 of C (an O(d_c)-work column-update, repeated n_powers
+    times per outer step), giving O(d_c^3) total.  Naively rebuilding the
+    full Q^2..Q^{d_c} ladder per outer step would give O(d_c^4) instead.
     """
     n = d_c + 1  # padded polynomial length
     n_powers = max(d_c - 1, 1)
@@ -176,10 +180,10 @@ def _solve_composition_taylor(
     q0 = p_inner[0] / p_outer[0]
     Q_init = jnp.zeros(n).at[1].set(q0)
 
-    # Initialize Q power table: C[m] = Q^{m+2} for m=0..n_powers-1
-    # Place q0_powers[m-2] at position (m-2, m) for m in 2..min(d_c, n-1).
-    # Vectorised advanced-indexing scatter — single HLO op instead of an
-    # O(d_c) Python loop emitting individual update_slice ops.
+    # Initialize Q power table: C[m] = Q_init^{m+2} for m=0..n_powers-1.
+    # Q_init has q0 only at slot 1, so Q_init^{m+2} has q0^{m+2} at slot
+    # m+2 and zero elsewhere.  Place q0_powers[m-2] at position (m-2, m)
+    # for m in 2..min(d_c, n-1).
     C_init = jnp.zeros((n_powers, n))
     q0_powers = jnp.power(q0, jnp.arange(2, d_c + 1, dtype=jnp.float64))
     m_range = jnp.arange(2, min(d_c + 1, n))
@@ -187,31 +191,54 @@ def _solve_composition_taylor(
 
     q_init = jnp.zeros(d_c).at[0].set(q0)
 
+    if d_c <= 1:
+        return q_init
+
+    i_range = jnp.arange(n)
+
     def step(carry, k):
         q_arr, Q_poly, C = carry
 
         # Correction: sum_{m=2}^{d_c} a[m-1] * C[m-2][k+1]
-        power_coeffs = C[:n_powers, k + 1]
+        # Column k+1 of C was finalised at outer step k-1 (or by C_init
+        # for k=1), so this read sees the correct Q^{m+2}[k+1] values.
         a_coeffs = p_outer[1:d_c]
-        correction = jnp.dot(a_coeffs[:n_powers], power_coeffs[:n_powers])
+        power_coeffs = C[:n_powers, k + 1]
+        correction = jnp.dot(a_coeffs[:n_powers], power_coeffs)
 
-        # Solve for q[k]
+        # Solve for q[k] and write Q[k+1].
         q_k = (p_inner[k] - correction) / p_outer[0]
         q_arr = q_arr.at[k].set(q_k)
         Q_poly = Q_poly.at[k + 1].set(q_k)
 
-        # Recompute Q powers: Q^2 = Q*Q, Q^3 = Q^2*Q, ...
-        def power_step(prev, _):
-            nxt = _truncated_convolve(prev, Q_poly)
-            return nxt, nxt
+        # Update column j = k+2 of C.  Only this column changes when Q
+        # gains a new coefficient at slot k+1: for j' <= k+1, Q^m[j']
+        # depends only on Q[1..j'] (already finalised); for j' = k+2,
+        # Q^m[j'] gains the contribution of the new Q[k+1].  Higher
+        # columns j' > k+2 are filled at later outer steps.
+        #
+        # Key fact: C[m, k+2] = sum_{i=1}^{k+1} Q[i] * C[m-1, k+2-i],
+        # i.e., it reads C[m-1, j'] only for j' in [1, k+1] — all of
+        # which were finalised in PRIOR outer steps.  So all m can be
+        # updated in parallel from the previous-step state of C.
+        # Out-of-bounds writes at the final outer step (j = n) are
+        # silently dropped via mode='drop'.
+        j = k + 2
 
-        _, C_new = lax.scan(power_step, Q_poly, None, length=n_powers,
-                            unroll=min(n_powers, 16))
+        # Stack [Q, C[0], ..., C[n_powers-2]] as "previous powers": row m
+        # holds Q^{m+1}, used to compute Q^{m+2}[j] = (Q * row m)[j].
+        prev_rows = jnp.concatenate([Q_poly[None, :], C[:n_powers - 1, :]],
+                                    axis=0)
 
-        return (q_arr, Q_poly, C_new), None
+        # Vectorised dot products: new_col[m] = sum_{i=1}^{j-1} Q[i] * prev_rows[m, j-i].
+        mask = (i_range >= 1) & (i_range <= j - 1)
+        safe_idx = jnp.where(mask, j - i_range, 0)
+        Q_masked = jnp.where(mask, Q_poly, 0.0)
+        new_col = jnp.einsum("i,mi->m", Q_masked, prev_rows[:, safe_idx])
 
-    if d_c <= 1:
-        return q_init
+        C = C.at[:, j].set(new_col, mode='drop')
+
+        return (q_arr, Q_poly, C), None
 
     (q_final, _, _), _ = lax.scan(
         step, (q_init, Q_init, C_init), jnp.arange(1, d_c),
