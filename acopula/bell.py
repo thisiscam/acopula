@@ -968,7 +968,10 @@ def _root_assembly(
         # custom_taylor[k] = psi^{(k)}(t_r) / k!, shape (d+1,).
         twp_sign = jnp.sign(custom_taylor)
         twp_abs = jnp.abs(custom_taylor)
-        twp_log_abs = jnp.where(twp_abs > 0, _log(twp_abs),
+        # Double-where guard: feed _log a strictly-positive value so the
+        # JVP through the unselected branch stays finite even at zeros.
+        twp_abs_safe = jnp.where(twp_abs > 0, twp_abs, 1.0)
+        twp_log_abs = jnp.where(twp_abs > 0, _log(twp_abs_safe),
                                 jnp.log(jnp.finfo(jnp.float64).tiny))
         # Skip the jet path entirely. log_jet has no work to do here
         # because the override returned float64 coefs directly; if the
@@ -990,7 +993,8 @@ def _root_assembly(
             # Build the full (d+1, ...) (sign, log_mag) for [primal, series...].
             primal_sign = jnp.sign(primal_out)
             primal_abs = jnp.abs(primal_out)
-            primal_log = jnp.where(primal_abs > 0, jnp.log(primal_abs),
+            primal_abs_safe = jnp.where(primal_abs > 0, primal_abs, 1.0)
+            primal_log = jnp.where(primal_abs > 0, jnp.log(primal_abs_safe),
                                    jnp.log(jnp.finfo(jnp.float64).tiny))
             twp_sign = jnp.concatenate([primal_sign[None], series_out_log.sign])
             twp_log_abs = jnp.concatenate([primal_log[None], series_out_log.log_mag])
@@ -1006,10 +1010,12 @@ def _root_assembly(
                 jnp.asarray(series_out),
             ])
             twp_sign = jnp.sign(taylor_with_primal)
-            # Mask zeros to avoid log(0); rely on the final `nonzero` mask below
-            # to zero out the contributions.
+            # Double-where: feed _log a strictly-positive value so JVP through
+            # the unselected branch is finite at zeros (otherwise grad(log(0))
+            # = ∞ contaminates the masked output).
             twp_abs = jnp.abs(taylor_with_primal)
-            twp_log_abs = jnp.where(twp_abs > 0, _log(twp_abs),
+            twp_abs_safe = jnp.where(twp_abs > 0, twp_abs, 1.0)
+            twp_log_abs = jnp.where(twp_abs > 0, _log(twp_abs_safe),
                                     jnp.log(jnp.finfo(jnp.float64).tiny))
 
     # Work in log domain to avoid overflow for large d.
