@@ -32,7 +32,7 @@ classifiers = [
 ]
 dependencies = [
     "jax>=0.8,<0.9",
-    "jet-array>=0.1.0a1",
+    "jet-array==0.1.0a1",
     "jaxopt>=0.8",
     "optimistix>=0.0.6",
     "quadax>=0.2.9",
