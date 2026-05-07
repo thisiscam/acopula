@@ -10,7 +10,7 @@ from scipy import stats
 
 jax.config.update("jax_enable_x64", True)
 
-from acopula import compile_model, copula, defmodel, marginal
+from acopula import compile_model, copula, marginal
 
 @copula
 class Clayton:
@@ -44,7 +44,6 @@ def main():
     n_groups, n_sectors, n_leaves = 2, 2, 2
     d = n_groups * n_sectors * n_leaves
 
-    @defmodel
     def model(params, obs):
         root = Clayton(params[0])
         groups = []

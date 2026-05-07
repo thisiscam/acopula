@@ -15,7 +15,7 @@ from scipy import stats
 
 jax.config.update("jax_enable_x64", True)
 
-from acopula import compile_model, copula, defmodel, marginal
+from acopula import compile_model, copula, marginal
 
 # Copula definitions
 @copula
@@ -66,7 +66,6 @@ class UniformDist:
 
 def make_flat_model(copula_cls, theta, d):
     """Create a d-dimensional non-nested compiled model + flat params."""
-    @defmodel
     def model(params, obs):
         cop = copula_cls(params[0])
         return cop([marginal(UniformDist(), obs=obs[i]) for i in range(d)])
@@ -87,7 +86,6 @@ def make_nested_2level(outer_cls, outer_theta, inner_cls, inner_theta,
     """
     total_leaves = groups * leaves_per_group
 
-    @defmodel
     def model(params, obs):
         outer = outer_cls(params[0])
         children = []
@@ -111,7 +109,6 @@ def make_nested_3level(root_cls, root_theta, mid_cls, mid_theta,
                        leaf_cls, leaf_theta,
                        n_groups, n_sectors_per_group, n_leaves_per_sector):
     """Create a 3-level nested model: root(mid(leaf_cop(leaves)))."""
-    @defmodel
     def model(params, obs):
         root = root_cls(params[0])
         groups = []

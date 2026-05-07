@@ -1,6 +1,6 @@
 """Generate samples using vmap and plot pairwise distributions."""
 
-from acopula import copula, defmodel, marginal
+from acopula import copula, marginal
 import jax
 import jax.numpy as jnp
 import jax.random as jrandom
@@ -25,7 +25,6 @@ class Frank:
         return -jnp.log1p(jnp.expm1(-self.theta) * jnp.exp(-u)) / self.theta
 
 
-@defmodel
 def model(params, obs):
     c1 = Frank(params[0])
     c2 = Frank(params[1])

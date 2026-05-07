@@ -34,7 +34,7 @@ Uniform leaves, and gradient-based MLE in twenty lines:
 import jax
 import jax.numpy as jnp
 from tensorflow_probability.substrates import jax as tfp
-from acopula import copula, defmodel, marginal
+from acopula import compile_model, copula, marginal
 
 @copula
 class Frank:
@@ -42,7 +42,6 @@ class Frank:
     def generator(self, u):
         return -jnp.log1p(jnp.expm1(-self.theta) * jnp.exp(-u)) / self.theta
 
-@defmodel
 def model(params, obs):
     outer = Frank(params[0])
     inner = Frank(params[1])
@@ -54,15 +53,12 @@ def model(params, obs):
 obs = jnp.array([[0.3, 0.7],
                  [0.4, 0.8]])
 
-model.set_params(jnp.array([2.0, 5.0]))
-print(model.log_likelihood(obs))                # scalar log-likelihood
+cm = compile_model(model, template=jnp.array([1.0, 1.0]))
+params = jnp.array([2.0, 5.0])
+print(cm.eval(obs, params))                     # scalar log-likelihood
 
-def neg_ll(params, obs):
-    model.set_params(params)
-    return -model.log_likelihood(obs)
-
-grad = jax.grad(neg_ll)(jnp.array([2.0, 5.0]), obs)
-print(grad)                                     # ∂(-ll)/∂params, exact
+grad = jax.grad(cm.eval, argnums=1)(obs, params)
+print(grad)                                     # ∂ll/∂params, exact
 ```
 
 ### With Weibull marginals and right-censoring
@@ -72,7 +68,6 @@ Use `float64` for the distribution parameters since `acopula` enables
 `jax_enable_x64` at import time.
 
 ```python
-@defmodel
 def survival_model(params, obs):
     outer = Frank(params[0])
     inner = Frank(params[1])
@@ -86,8 +81,9 @@ def survival_model(params, obs):
 
 `@copula` registers the parameters declared as type-annotated class
 attributes and derives the inverse generator symbolically via `oryx`.
-`@defmodel` traces the function into a copula tree, flattens parameters
-into a single array, and exposes `log_likelihood`, all `jit`/`grad`-compatible.
+`compile_model` traces the model function into a copula tree, flattens
+parameters into a single array, and returns a `CompiledModel` exposing
+a jit'd log-likelihood that is `jax.grad`/`jax.vmap`-compatible.
 `marginal` pairs each leaf with a distribution and an optional
 per-observation censoring flag.
 

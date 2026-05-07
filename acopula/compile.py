@@ -16,7 +16,7 @@ parameter sweeps reuse the same compiled program.
 
 Typical usage::
 
-    from acopula import compile_model, defmodel, marginal, copula
+    from acopula import compile_model, marginal, copula
 
     @copula
     class Clayton:
@@ -24,7 +24,6 @@ Typical usage::
         def generator(self, t):
             return jnp.power(1.0 + t, -1.0 / self.theta)
 
-    @defmodel
     def model(p, u):
         return Clayton(p["theta"])([
             marginal(Uniform(), obs=u[i]) for i in range(5)
@@ -43,46 +42,12 @@ argument via ``flatten``, so different ``params`` calls hit cache.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Optional, Tuple, Union
+from typing import Any, Callable, Optional, Tuple
 
 import jax
 import jax.numpy as jnp
 from jax import random as jrandom
 from oryx import core as oryx_core
-
-
-@dataclass(frozen=True)
-class ModelFn:
-    """Marker wrapper produced by ``@defmodel``.
-
-    Holding the user function in a typed container lets ``compile_model``
-    distinguish "function defined as a copula model" from arbitrary
-    callables, while still supporting plain function passing for users
-    who skip the decorator.
-    """
-
-    fn: Callable
-
-    def __call__(self, params, u):
-        return self.fn(params, u)
-
-
-def defmodel(fn: Callable) -> ModelFn:
-    """Mark a function as a copula composition model.
-
-    Decorated functions take ``(params, u)`` and must return a Node
-    produced by an outer copula call (see the package README for the
-    composition syntax).  The decorator itself does no work besides
-    wrapping; the actual graph construction happens inside
-    :func:`compile_model`.
-    """
-    return ModelFn(fn=fn)
-
-
-def _resolve_model_fn(model_fn: Union[Callable, ModelFn]) -> Callable:
-    if isinstance(model_fn, ModelFn):
-        return model_fn.fn
-    return model_fn
 
 
 def _harvest_graph_and_params(
@@ -112,7 +77,7 @@ def _harvest_graph_and_params(
 
     if not isinstance(graph, Node):
         raise TypeError(
-            "@defmodel function must return a Copula call producing a Node"
+            "Model function must return a Copula call producing a Node"
         )
 
     leaves_in_order = _collect_leaves_in_order(graph)
@@ -356,7 +321,7 @@ class CompiledModel:
 
 
 def compile_model(
-    model_fn: Union[Callable, ModelFn],
+    model_fn: Callable,
     *,
     template: Any,
     method: str = "auto",
@@ -381,8 +346,8 @@ def compile_model(
     invalidating cache) is avoided by construction.
 
     Args:
-        model_fn: A function ``(params, u) -> Node`` (typically wrapped
-            with ``@defmodel``).  Plain functions also work.
+        model_fn: A function ``(params, u) -> Node`` returning a Copula
+            call that produces the structural graph.
         template: A parameter pytree whose structure matches what
             ``model_fn`` expects.  Values are used only to drive oryx's
             tracer; pass any sensible defaults (e.g.
@@ -407,10 +372,8 @@ def compile_model(
         A :class:`CompiledModel` holding the frozen graph, flattener,
         and jit'd log-likelihood.
     """
-    fn = _resolve_model_fn(model_fn)
-
-    graph, _harvested, obs_shape = _harvest_graph_and_params(fn, template)
-    flatten, param_shape = _make_flatten(fn, template)
+    graph, _harvested, obs_shape = _harvest_graph_and_params(model_fn, template)
+    flatten, param_shape = _make_flatten(model_fn, template)
 
     raw_ll = _build_ll_fn(
         graph,
@@ -428,7 +391,7 @@ def compile_model(
         param_shape=param_shape,
         obs_shape=obs_shape,
         with_censored_mask=with_censored_mask,
-        _model_fn=fn,
+        _model_fn=model_fn,
         _flatten_fn=flatten,
         _ll_fn_jit=ll_fn_jit,
     )

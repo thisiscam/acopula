@@ -1,6 +1,6 @@
 """Example showing step-by-step visualization of sampling computation."""
 
-from acopula import copula, defmodel
+from acopula import copula
 import jax
 import jax.numpy as jnp
 
@@ -21,7 +21,6 @@ class Frank:
         return -jnp.log1p(jnp.expm1(-self.theta) * jnp.exp(-u)) / self.theta
 
 
-@defmodel
 def model(params, u):
     f = Clayton(params[0])
     c = Clayton(params[1])

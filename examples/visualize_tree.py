@@ -1,4 +1,4 @@
-from acopula import Copula, defmodel
+from acopula import Copula
 import jax
 import jax.numpy as jnp
 
@@ -25,7 +25,6 @@ class Frank(Copula):
         )
 
 
-@defmodel
 def model(params, u):
     f = Frank(params[0])
     c = Clayton(params[1])

@@ -1,7 +1,7 @@
 import jax
 import jax.numpy as jnp
 import pytest
-from acopula import compile_model, defmodel, marginal, copula
+from acopula import compile_model, marginal, copula
 import jax.scipy.special
 from oryx import core as oryx_core
 # =============================
@@ -231,7 +231,6 @@ def compute_exact_mixed_partial(copula_fn, x_vals):
 # =============================
 
 
-@defmodel
 def model_single_clayton(params, u):
     c = Clayton(params["theta"])
     return c([marginal(Uniform(), obs=u[i]) for i in range(4)])
@@ -244,7 +243,6 @@ def ref_single_clayton(u, params):
     return phi(s)
 
 
-@defmodel
 def model_single_clayton_2(params, u):
     c = Clayton(params["theta"])
     return c([marginal(Uniform(), obs=u[i]) for i in range(2)])
@@ -256,7 +254,6 @@ def ref_single_clayton_2(u, params):
     return phi(s)
 
 
-@defmodel
 def model_single_gumbel(params, u):
     c = Gumbel(params["theta"])
     return c([marginal(Uniform(), obs=u[i]) for i in range(4)])
@@ -268,7 +265,6 @@ def ref_single_gumbel(u, params):
     return phi(s)
 
 
-@defmodel
 def model_nested_clayton_2x2(params, u):
     f0 = Clayton(params["theta0"])
     f1 = Clayton(params["theta1"])
@@ -285,7 +281,6 @@ def ref_nested_clayton_2x2(u, params):
     return phi0(phi0_inv(c1) + phi0_inv(c2))
 
 
-@defmodel
 def model_alt_clayton_no12(params, u):
     f0 = Clayton(params["theta0"])
     f1 = No12(params["theta1"])
@@ -307,7 +302,6 @@ def make_nested_2x2_model(outer_name: str, inner_name: str):
     outer_cls = _COPULA_CLASSES_BY_NAME[outer_name]
     inner_cls = _COPULA_CLASSES_BY_NAME[inner_name]
 
-    @defmodel
     def _model(params, u, *, _outer_cls=outer_cls, _inner_cls=inner_cls):
         f0 = _instantiate_copula(_outer_cls, params["theta0"])
         f1 = _instantiate_copula(_inner_cls, params["theta1"])
@@ -391,7 +385,6 @@ def build_table3_scenarios():
     return scenarios
 
 
-@defmodel
 def model_gaussian_marginals(params, u):
     c = Clayton(params["theta"])
     return c([marginal(Gaussian(0.0, 1.0), obs=u[i]) for i in range(2)])
@@ -409,7 +402,6 @@ def ref_gaussian_marginals(x, params):
     return joint_cdf(x)
 
 
-@defmodel
 def model_diff_params_same_level(params, u):
     f0 = Clayton(params["theta0"])
     f1 = Clayton(params["theta1"])
@@ -428,7 +420,6 @@ def ref_diff_params_same_level(u, params):
     return phi0(phi0_inv(c1) + phi0_inv(c2))
 
 
-@defmodel
 def model_nested_1x2(params, u):
     f0 = Clayton(params["theta0"])
     f1 = Gumbel(params["theta1"])
@@ -447,7 +438,6 @@ def ref_nested_1x2(u, params):
     return phi0(phi0_inv(u[0]) + phi0_inv(phi1(phi1_inv(u[1]) + phi1_inv(u[2]))))
 
 
-@defmodel
 def model_none_leaf(params, u):
     # 'None' leaf variant: Root with a child subnode and one leaf being a direct variable,
     # but another index in 'u' is unused.
@@ -475,7 +465,6 @@ def ref_none_leaf(u, params):
     return copula_fn(u)
 
 
-@defmodel
 def three_level_model(params, u):
     f0 = Clayton(params["theta0"])
     f1 = Clayton(params["theta1"])

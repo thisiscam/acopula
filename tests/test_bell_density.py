@@ -3,7 +3,7 @@
 import jax
 import jax.numpy as jnp
 import pytest
-from acopula import compile_model, defmodel, marginal, copula
+from acopula import compile_model, marginal, copula
 
 jax.config.update("jax_enable_x64", True)
 
@@ -108,7 +108,6 @@ def _brute_force_log_density(copula_fn, u_vals):
 
 def make_nested_2x2(outer_cls, inner_cls):
     """Create a 2x2 nested model: outer([inner([u0, u1]), inner([u2, u3])])."""
-    @defmodel
     def model(params, u):
         f0 = outer_cls(params["theta0"])
         f1 = inner_cls(params["theta1"])
@@ -218,7 +217,6 @@ def test_bell_vs_integral(outer_cls, inner_cls, theta0, theta1):
 
 def test_bell_single_layer():
     """Bell on a single-layer copula matches the existing single-layer code."""
-    @defmodel
     def model(params, u):
         f = Clayton(params["theta"])
         return f([marginal(Uniform(), obs=u[0]), marginal(Uniform(), obs=u[1]),
@@ -239,7 +237,6 @@ def test_bell_single_layer():
 
 def test_bell_three_level():
     """Bell works for 3-level tree: root -> {node_a, u3}, node_a -> {u1, u2}."""
-    @defmodel
     def model(params, u):
         f_r = Clayton(params["theta_r"])
         f_a = Clayton(params["theta_a"])
@@ -274,7 +271,6 @@ def test_bell_three_level():
 
 def test_bell_diff_params_same_structure():
     """Two sectors with same structure but different theta — tests vmap batching."""
-    @defmodel
     def model(params, u):
         f0 = Clayton(params["theta0"])
         f1 = Clayton(params["theta1"])
@@ -310,7 +306,6 @@ def test_bell_diff_params_same_structure():
 
 def test_bell_asymmetric_3_plus_2():
     """Root -> {sector(3 leaves), sector(2 leaves)}."""
-    @defmodel
     def model(params, u):
         f0 = Clayton(params["theta0"])
         f1 = Clayton(params["theta1"])
@@ -341,7 +336,6 @@ def test_bell_asymmetric_3_plus_2():
 
 def test_bell_asymmetric_sector_plus_leaf():
     """Root -> {sector(2 leaves), single leaf}."""
-    @defmodel
     def model(params, u):
         f0 = Clayton(params["theta0"])
         f1 = Clayton(params["theta1"])
@@ -373,7 +367,6 @@ def test_bell_asymmetric_sector_plus_leaf():
 
 def test_bell_four_sectors():
     """Root with 4 identical sectors — tests vmap over 4 children + Cauchy product."""
-    @defmodel
     def model(params, u):
         f0 = Clayton(params["theta0"])
         f1 = Clayton(params["theta1"])
@@ -408,7 +401,6 @@ def test_bell_four_sectors():
 
 def test_bell_mixed_families():
     """Root(Clayton) -> {Gumbel sector, Clayton sector} — different structure groups."""
-    @defmodel
     def model(params, u):
         f0 = Clayton(params["theta0"])
         f_g = Gumbel(params["theta_g"])
@@ -444,7 +436,6 @@ def test_bell_mixed_families():
 
 def test_bell_deep_two_branches():
     """3-level: root -> {node_a, node_b}, each -> {u1, u2}."""
-    @defmodel
     def model(params, u):
         f_r = Clayton(params["theta_r"])
         f_a = Clayton(params["theta_a"])
@@ -481,7 +472,6 @@ def test_bell_true_3_layer_chain():
     Chain with 3 nesting levels. Bell recursion propagates beta-coefficients
     through two composition steps.
     """
-    @defmodel
     def model(params, u):
         f_r = Clayton(params["theta_r"])
         f_m = Clayton(params["theta_m"])
@@ -517,7 +507,6 @@ def test_bell_3_layer_branching():
 
     Tests Bell recursion at depth 3 with Cauchy product at the mid level.
     """
-    @defmodel
     def model(params, u):
         f_r = Clayton(params["theta_r"])
         f_m = Clayton(params["theta_m"])
@@ -556,7 +545,6 @@ def test_bell_3_layer_mixed():
     Full generality: mixed leaf/node children, 3 distinct generators,
     Bell recursion through 2 composition steps.
     """
-    @defmodel
     def model(params, u):
         f_r = Clayton(params["theta_r"])
         f_m = Clayton(params["theta_m"])
@@ -596,7 +584,6 @@ def test_bell_3_layer_full_branching():
 
     Total: 8 leaves, 3 generator levels, Cauchy product at every level.
     """
-    @defmodel
     def model(params, u):
         f_r = Clayton(params["theta_r"])
         f_m = Clayton(params["theta_m"])
@@ -641,7 +628,6 @@ def test_bell_3_layer_full_branching():
 
 def test_bell_3x2():
     """Root with 3 sectors of 2 leaves each (d=6)."""
-    @defmodel
     def model(params, u):
         f0 = Clayton(params["theta0"])
         f1 = Clayton(params["theta1"])

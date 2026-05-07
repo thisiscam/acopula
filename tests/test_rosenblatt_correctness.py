@@ -14,7 +14,7 @@ from scipy import stats
 
 jax.config.update("jax_enable_x64", True)
 
-from acopula import compile_model, copula, defmodel, marginal
+from acopula import compile_model, copula, marginal
 
 
 @copula
@@ -58,7 +58,6 @@ def make_nested_model(outer_cls, outer_theta, inner_cls, inner_theta,
     """Create a 2-level nested copula model."""
     d = n_sectors * leaves_per_sector
 
-    @defmodel
     def model(params, obs):
         outer = outer_cls(params[0])
         inner_cops = [inner_cls(params[1 + i]) for i in range(n_sectors)]

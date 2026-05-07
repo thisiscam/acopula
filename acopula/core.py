@@ -595,9 +595,8 @@ def _reconstruct_obs_from_marginals(
 #
 # Migrate Model() / set_params() / make_ll_fn() callers to:
 #
-#     from acopula import compile_model, defmodel
+#     from acopula import compile_model
 #
-#     @defmodel
 #     def m(p, u): ...
 #
 #     cm = compile_model(m, template={'theta': 1.0}, method='bell')

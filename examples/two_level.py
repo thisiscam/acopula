@@ -1,4 +1,4 @@
-from acopula import Copula, defmodel
+from acopula import Copula
 import jax
 import jax.numpy as jnp
 
@@ -17,7 +17,6 @@ class Frank(Copula):
         return -jax.log(1 - (jax.exp(-self.theta * u) - 1) / (jax.exp(-self.theta) - 1))
 
 
-@defmodel
 def model(params, u):
     f = Frank(params[0])
     c = Clayton(params[1])
@@ -30,7 +29,7 @@ model.sample(
     jax.random.PRNGKey(0), 100
 )  # this will generate 100 samples from the model
 # under the hood
-# defmodel calls the user defined `model` and builds a complete graph of the model
+# compile_model traces the user-defined `model` and builds a complete graph
 # then, we need to find a "plan" that traverses the graph
 # In particular, a plan is a sequence of stages, where each stage is a set of nodes of the same family and all ancestor families.
 # For each stage, all the nodes that are inputs to the current staged are already computed and thus available
@@ -49,7 +48,7 @@ model.log_likelihood(
     jnp.ones((10, 20))
 )  # this will compute the log likelihood of the model
 # under the hood
-# defmodel calls the user defined `model` and builds a complete graph of
+# compile_model traces the user-defined `model` and builds a complete graph
 # if the graph is a single layer tree (there's only one node of copula),
 # then the log likelihood is simply found by finding the d^th order mixed derivative of the outer generator, multiplied by the product of the derivatives of the inner generators.
 # if the graph is a multi-layer tree,
