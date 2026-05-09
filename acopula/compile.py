@@ -209,12 +209,19 @@ class CompiledModel:
         with_censored_mask: True iff this compilation supports a
             per-observation censoring mask as a third argument to
             ``ll_fn``.
+        survival: True iff this compilation interprets observations as
+            survival data — the copula models the joint survival
+            ``S(T) = 1 - F(T)``. Stored here so ``sample()`` can apply
+            the matching ``F^{-1}(1 - U)`` inversion at the leaves and
+            return data drawn from the same joint distribution that
+            the likelihood scores.
     """
 
     graph: Any
     param_shape: Tuple[int, ...]
     obs_shape: Tuple[int, ...]
     with_censored_mask: bool
+    survival: bool
     _model_fn: Callable
     _flatten_fn: Callable
     _ll_fn_jit: Callable
@@ -267,7 +274,13 @@ class CompiledModel:
         max_cdf_x: float = 1e6,
         method: str = "marshall_olkin",
     ) -> jax.Array:
-        """Generate ``n`` samples from the copula at ``params``."""
+        """Generate ``n`` samples from the copula at ``params``.
+
+        Respects the ``survival`` flag set at compile time — when
+        ``survival=True`` the leaf inversion uses ``F^{-1}(1 - U)`` so
+        the samples are drawn from the same joint distribution that
+        the likelihood scores.
+        """
         from .core import _sample_once, _sample_once_rosenblatt
 
         flat = self._flatten_fn(params)
@@ -276,11 +289,13 @@ class CompiledModel:
             def sample_one(sample_key):
                 return _sample_once(
                     self.graph, sample_key, flat, post_widder_k, max_cdf_x,
+                    survival=self.survival,
                 )
         elif method == "rosenblatt":
             def sample_one(sample_key):
                 return _sample_once_rosenblatt(
                     self.graph, sample_key, flat,
+                    survival=self.survival,
                 )
         else:
             raise ValueError(
@@ -391,6 +406,7 @@ def compile_model(
         param_shape=param_shape,
         obs_shape=obs_shape,
         with_censored_mask=with_censored_mask,
+        survival=survival,
         _model_fn=model_fn,
         _flatten_fn=flatten,
         _ll_fn_jit=ll_fn_jit,

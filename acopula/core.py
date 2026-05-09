@@ -461,8 +461,15 @@ def _marginal_quantiles_chunked(
     leaves_in_order: List[Leaf],
     params: jax.Array,
     U_leaves: jax.Array,
+    survival: bool = False,
 ) -> Tuple[List[Tuple[int, ...]], jax.Array]:
     """Compute marginal quantiles for each marginal leaf, grouped by dist_type.
+
+    When ``survival=True``, the leaf uniforms ``U_leaves`` are interpreted
+    as survival probabilities ``S(t) = 1 - F(t)`` rather than CDFs, so we
+    invert via ``F^{-1}(1 - U)`` to recover ``T``. This matches the
+    likelihood's ``survival=True`` convention (where ``u = 1 - F(t)``
+    feeds the copula).
 
     Returns:
       obs_indices: list of obs_index tuples in the same order as returned values
@@ -514,11 +521,14 @@ def _marginal_quantiles_chunked(
 
         starts_arr = jnp.array(starts, dtype=jnp.int32)
         u_arr = U_leaves[jnp.array(leaf_is, dtype=jnp.int32)]
+        # Survival: copula uniforms encode S(T) = 1 - F(T), so the obs
+        # value T = F^{-1}(1 - U). We apply the flip *before* the quantile.
+        u_arr_for_q = 1.0 - u_arr if survival else u_arr
 
         if rep_spec is None:
             # No dynamic params: instantiate once, then vmap quantile
             dist_obj = dist_type(**static_kwargs)
-            obs_vals = jax.vmap(dist_obj.quantile)(u_arr)
+            obs_vals = jax.vmap(dist_obj.quantile)(u_arr_for_q)
         else:
             # Dynamic params: vmap over leaves; each leaf slices params and rebuilds dist
             size = rep_spec.size
@@ -530,7 +540,7 @@ def _marginal_quantiles_chunked(
                 dist_obj = dist_type(**dyn_kwargs, **static_kwargs)
                 return dist_obj.quantile(u_i)
 
-            obs_vals = jax.vmap(quantile_one)(starts_arr, u_arr)
+            obs_vals = jax.vmap(quantile_one)(starts_arr, u_arr_for_q)
 
         obs_values_list.append(obs_vals)
 
@@ -562,6 +572,7 @@ def _reconstruct_obs_from_marginals(
     graph: Node,
     params: jax.Array,
     U_leaves: jax.Array,
+    survival: bool = False,
 ) -> jax.Array:
     """Reconstruct an obs-shaped tensor from marginal leaves."""
     leaves_in_order = _collect_leaves_in_order(graph)
@@ -575,6 +586,7 @@ def _reconstruct_obs_from_marginals(
         leaves_in_order=leaves_in_order,
         params=params,
         U_leaves=U_leaves,
+        survival=survival,
     )
     return _scatter_obs_values(
         obs_shape=obs_shape,
@@ -1658,6 +1670,7 @@ def _sample_once(
     params: jax.Array,
     post_widder_k: int,
     max_cdf_x: float,
+    survival: bool = False,
 ) -> jax.Array:
     """Sample one observation using Marshall-Olkin algorithm.
 
@@ -1667,6 +1680,12 @@ def _sample_once(
     3. Build global parameter indexers
     4. Sample V values top-down (internal nodes)
     5. Transform leaves bottom-up (from uniform to final)
+
+    When ``survival=True``, the leaf-to-obs inversion uses
+    ``F^{-1}(1 - U)`` instead of ``F^{-1}(U)``, so the returned
+    observations are jointly distributed with the copula on
+    ``S(T) = 1 - F(T)`` — matching the likelihood when
+    ``compile_model(..., survival=True)``.
     """
     # Step 1: Compute schedule
     schedule_result = _compute_sampling_schedule(graph)
@@ -1725,7 +1744,7 @@ def _sample_once(
         total_nodes,
     )
     return _reconstruct_obs_from_marginals(
-        graph=graph, params=params, U_leaves=U_leaves
+        graph=graph, params=params, U_leaves=U_leaves, survival=survival,
     )
 
 
@@ -2405,6 +2424,7 @@ def _sample_once_rosenblatt(
     graph: Node,
     key: jax.Array,
     params: jax.Array,
+    survival: bool = False,
 ) -> jax.Array:
     """Sample one observation using the Rosenblatt transform.
 
@@ -2450,7 +2470,7 @@ def _sample_once_rosenblatt(
             U_leaves = U_leaves.at[leaf_idx].set(w[i])
 
         return _reconstruct_obs_from_marginals(
-            graph=graph, params=params, U_leaves=U_leaves
+            graph=graph, params=params, U_leaves=U_leaves, survival=survival,
         )
 
     # ---- Nested copula: Bell polynomial-based Rosenblatt (arbitrary depth) ----
@@ -2669,7 +2689,7 @@ def _sample_once_rosenblatt(
     _process_subtree(graph)
 
     return _reconstruct_obs_from_marginals(
-        graph=graph, params=params, U_leaves=U_leaves
+        graph=graph, params=params, U_leaves=U_leaves, survival=survival,
     )
 
 
