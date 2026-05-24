@@ -57,7 +57,7 @@ plugins:
             filters: ["!^_"]                    # hide private / dunder members
             show_source: false
             summary: true
-            heading_level: 2
+            heading_level: 3   # section headers are ## (h2); symbols nest as h3
   # Emits /llms.txt (an index for LLMs/agents, per llmstxt.org) plus a single
   # concatenated llms-full.txt of the whole site.
   - llmstxt:
