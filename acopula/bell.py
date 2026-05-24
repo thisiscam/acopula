@@ -958,13 +958,24 @@ def _root_assembly(
 
     # Per-family Taylor override: families whose ψ has a numerically
     # stable series form (e.g. Laplace transforms of nonneg distributions
-    # via the frailty representation) can provide
-    # ``generator_taylor_coefficients(t, k_max)`` to bypass jet entirely.
-    # This avoids the chain-rule cancellations Taylor-mode AD on ψ's
-    # closed form produces at high derivative order — relevant for AMH
-    # past d≈30 in float64. Returning None means "use jet".
-    custom_taylor = root_cop.generator_taylor_coefficients(t_r, d)
-    if custom_taylor is not None:
+    # via the frailty representation) can provide a closed-form Taylor
+    # expansion to bypass jet entirely.  This avoids the chain-rule
+    # cancellations Taylor-mode AD on ψ's closed form produces at high
+    # derivative order — relevant for AMH past d≈30 in float64.
+    # Preference order: log-space hook -> linear hook -> jet.  The Bell
+    # density consumes the coefficients as (sign, log|c|) anyway, so the
+    # log-space hook feeds them straight in with no overflow-prone round
+    # trip through a linear float64 value.
+    custom_log_taylor = root_cop.log_generator_taylor_coefficients(t_r, d)
+    custom_taylor = (None if custom_log_taylor is not None
+                     else root_cop.generator_taylor_coefficients(t_r, d))
+    if custom_log_taylor is not None:
+        # custom_log_taylor = (sign, log|c|), each shape (d+1,); already in
+        # the representation the downstream signed-LSE wants.
+        twp_sign, twp_log_abs = custom_log_taylor
+        twp_sign = jnp.asarray(twp_sign)
+        twp_log_abs = jnp.asarray(twp_log_abs)
+    elif custom_taylor is not None:
         # custom_taylor[k] = psi^{(k)}(t_r) / k!, shape (d+1,).
         twp_sign = jnp.sign(custom_taylor)
         twp_abs = jnp.abs(custom_taylor)

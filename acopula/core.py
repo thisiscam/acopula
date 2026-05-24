@@ -49,6 +49,12 @@ class Copula:
     """
 
     def generator(self, u: jax.Array) -> jax.Array:  # pragma: no cover - abstract
+        """Return the Archimedean generator φ(u).
+
+        Subclasses **must** implement this. φ maps (0, 1] → [0, ∞), is
+        strictly decreasing and convex, with φ(1) = 0. Everything else
+        (density, inverse, sampling) is derived from it automatically.
+        """
         raise NotImplementedError
 
     # Inverse of generator: φ^{-1}(t)
@@ -101,6 +107,36 @@ class Copula:
             coefficients, or ``None`` to fall back to jet.
         """
         return None  # sentinel: use jet
+
+    def log_generator_taylor_coefficients(
+        self, t: jax.Array, k_max: int
+    ) -> Optional[Tuple[jax.Array, jax.Array]]:
+        """Log-space variant of :meth:`generator_taylor_coefficients`.
+
+        Return ``(sign, log_abs)``, two arrays of shape ``(k_max + 1,)`` with
+
+            ψ^{(k)}(t) / k!  ==  sign[k] * exp(log_abs[k]).
+
+        The Bell density consumes the Taylor coefficients as ``(sign, log|c|)``
+        pairs internally, so a family whose normalized coefficients are
+        computed in the log domain (e.g. via ``logsumexp`` over a frailty
+        series) should return them here directly rather than through the linear
+        :meth:`generator_taylor_coefficients` — that avoids exponentiating to a
+        possibly-overflowing float64 only for the framework to take its log
+        again, extending the usable derivative order at high ``d``.
+
+        The Bell path prefers this hook when it returns non-``None``, then falls
+        back to the linear hook, then to jet.  Returning ``None`` (the default)
+        selects that fallback chain.
+
+        Args:
+            t: scalar input point.
+            k_max: highest derivative order (inclusive).
+
+        Returns:
+            ``(sign, log_abs)`` arrays of shape ``(k_max + 1,)``, or ``None``.
+        """
+        return None  # sentinel: fall back to the linear hook / jet
 
     # For tracing: combine children (nodes/leaves) into a Node
     def __call__(self, children: Iterable[Union["Node", "Leaf", jax.Array]]) -> "Node":
