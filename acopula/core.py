@@ -151,25 +151,26 @@ class Copula:
 
 
 def copula(cls):
-    """Decorator to create a copula class with dataclass-like syntax.
+    """Class decorator for defining a copula family with dataclass-style
+    parameters.
 
-    Usage:
+    Generates an ``__init__`` from the type-annotated class attributes,
+    makes the class inherit from `Copula`, and registers the parameters —
+    while preserving every user-defined method. Instances accept positional
+    or keyword arguments.
+
+    Examples:
+        ```python
         @copula
         class Clayton:
             theta: float
 
-            def generator(self, u: jax.Array) -> jax.Array:
+            def generator(self, u):
                 return (1.0 + u) ** (-1.0 / self.theta)
 
-        # Can instantiate with positional or keyword arguments
-        c1 = Clayton(2.0)
-        c2 = Clayton(theta=2.0)
-
-    This automatically:
-    - Makes the class inherit from Copula
-    - Generates an __init__ method from type annotations
-    - Preserves all user-defined methods
-    - Handles parameter registration
+        c1 = Clayton(2.0)        # positional
+        c2 = Clayton(theta=2.0)  # keyword
+        ```
     """
     # Get type annotations in definition order
     annotations = getattr(cls, "__annotations__", {})
