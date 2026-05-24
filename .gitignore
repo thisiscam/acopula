@@ -21,3 +21,6 @@ env/
 
 # MkDocs build output
 site/
+
+# mkdocs-jupyter build cache
+.cache/

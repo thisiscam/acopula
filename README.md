@@ -13,7 +13,7 @@ For background, see the paper *Archimedean Copula Inference via Taylor-Mode
 AD* (arXiv:TBD).
 
 **Documentation:** <https://thisiscam.github.io/acopula/> ·
-**Examples:** [`examples/`](examples/)
+**Examples:** [rendered notebooks](https://thisiscam.github.io/acopula/examples/01_quickstart/) ([source](docs/examples/))
 
 ## Install
 
@@ -28,8 +28,8 @@ with jax 0.8. For development, clone and use [uv](https://docs.astral.sh/uv/):
 ```bash
 git clone https://github.com/thisiscam/acopula
 cd acopula
-uv sync                 # add --extra examples for the plotting examples
-uv run python examples/01_quickstart.py
+uv sync --extra examples
+uv run jupyter lab docs/examples/   # the example notebooks
 ```
 
 A PyPI `pip install acopula` is **not available yet**: the git-pinned `oryx`

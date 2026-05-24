@@ -48,7 +48,7 @@ release compatible with jax 0.8.
 ## Where to go next
 
 - [Quickstart](quickstart.md) — a working model in ~20 lines.
-- [Examples](examples.md) — MLE fitting, censored survival, sampling & plots.
+- [Examples](examples/01_quickstart.ipynb) — runnable notebooks: MLE fitting, censored survival, sampling & plots, a neural (ACNet) generator.
 - [API reference](api.md) — the full public surface.
 
 ## Citation

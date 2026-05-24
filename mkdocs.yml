@@ -27,7 +27,12 @@ theme:
 nav:
   - Home: index.md
   - Quickstart: quickstart.md
-  - Examples: examples.md
+  - Examples:
+      - Two-level copula: examples/01_quickstart.ipynb
+      - Fitting by MLE: examples/02_fit_mle.ipynb
+      - Censored survival: examples/03_censored_survival.ipynb
+      - Sampling & visualization: examples/04_sampling_and_visualize.ipynb
+      - Neural generator (ACNet): examples/05_neural_acnet.ipynb
   - API reference: api.md
 
 markdown_extensions:
@@ -45,6 +50,10 @@ extra_javascript:
 
 plugins:
   - search
+  # Render committed .ipynb notebooks (execute=false: use their stored outputs).
+  - mkdocs-jupyter:
+      execute: false
+      include_source: true
   - mkdocstrings:
       handlers:
         python:
@@ -76,6 +85,5 @@ plugins:
         Usage:
           - index.md
           - quickstart.md
-          - examples.md
         API:
           - api.md
