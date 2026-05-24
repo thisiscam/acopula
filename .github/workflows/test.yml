@@ -1,5 +1,7 @@
-# Requires jet-array to be installable from PyPI.
-# Publish jet-array first (tag v0.1.0 on thisiscam/jet-array → CI auto-publishes).
+# Installs with uv so the [tool.uv] overrides apply: the oryx/jet-array git
+# sources, the dropped stable tensorflow-probability, and the tfp-nightly pin
+# that keeps `jax.interpreters.xla.pytype_aval_mappings` available. Plain pip
+# ignores those blocks and the import crashes, so do NOT switch back to pip.
 name: tests
 
 on:
@@ -14,16 +16,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12"]
+        python-version: ["3.11", "3.12"]  # pyproject requires-python = ">=3.11"
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v5
         with:
           python-version: ${{ matrix.python-version }}
-          cache: pip
+          enable-cache: true
       - name: Install
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[test]"
+        run: uv sync --extra test --locked
       - name: Run tests
-        run: pytest -v
+        run: uv run --extra test python -m pytest -v
