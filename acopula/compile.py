@@ -323,14 +323,13 @@ class CompiledModel:
         annotations=None,
         ax=None,
     ):
-        from .visualize import draw
-        return draw(
-            self.graph,
-            include_leaves=include_leaves,
+        from .visualize import draw_networkx
+        G = self.as_networkx(include_leaves=include_leaves, annotations=annotations)
+        return draw_networkx(
+            G,
             layout=layout,
             with_labels=with_labels,
             graphviz_prog=graphviz_prog,
-            annotations=annotations,
             ax=ax,
         )
 

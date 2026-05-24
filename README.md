@@ -12,6 +12,9 @@ forward pass via Taylor-mode AD, scaling polynomially in the dimension.
 For background, see the paper *Archimedean Copula Inference via Taylor-Mode
 AD* (arXiv:TBD).
 
+**Documentation:** <https://thisiscam.github.io/acopula/> ·
+**Examples:** [`examples/`](examples/)
+
 ## Install
 
 ```bash

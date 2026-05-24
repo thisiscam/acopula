@@ -1,0 +1,66 @@
+site_name: acopula
+site_description: Archimedean copula inference via Taylor-mode automatic differentiation in JAX
+site_url: https://thisiscam.github.io/acopula/
+repo_url: https://github.com/thisiscam/acopula
+repo_name: thisiscam/acopula
+docs_dir: docs
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - search.suggest
+
+nav:
+  - Home: index.md
+  - Quickstart: quickstart.md
+  - Examples: examples.md
+  - API reference: api.md
+
+markdown_extensions:
+  - admonition
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - toc:
+      permalink: true
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: google
+            show_root_heading: true
+            show_source: true
+            members_order: source
+            separate_signature: true
+            show_signature_annotations: true
+  # Emits /llms.txt (an index for LLMs/agents, per llmstxt.org) plus a single
+  # concatenated llms-full.txt of the whole site.
+  - llmstxt:
+      markdown_description: >
+        acopula fits nested Archimedean copulas end-to-end with jax.grad,
+        including high-dimensional models and per-dimension censoring, using
+        Taylor-mode automatic differentiation for the high-order derivatives.
+      full_output: llms-full.txt
+      sections:
+        Usage:
+          - index.md
+          - quickstart.md
+          - examples.md
+        API:
+          - api.md
