@@ -11,10 +11,6 @@ required-markers = [
     "platform_machine == 'x86_64' and sys_platform == 'linux'",
 ]
 
-[manifest]
-constraints = [{ name = "tfp-nightly", specifier = "==0.26.0.dev20251116" }]
-overrides = [{ name = "tensorflow-probability", marker = "sys_platform == 'never'" }]
-
 [[package]]
 name = "absl-py"
 version = "2.4.0"
@@ -67,7 +63,7 @@ requires-dist = [
     { name = "jax", specifier = ">=0.8,<0.9" },
     { name = "jax", extras = ["cuda12"], marker = "platform_machine == 'x86_64' and sys_platform == 'linux' and extra == 'gpu'", specifier = ">=0.8,<0.9" },
     { name = "jaxopt", specifier = ">=0.8" },
-    { name = "jet-array", git = "https://github.com/thisiscam/jet-array.git?branch=main" },
+    { name = "jet-array", specifier = "==0.1.0a2" },
     { name = "matplotlib", marker = "extra == 'examples'", specifier = ">=3.7" },
     { name = "mkdocs-llmstxt", marker = "extra == 'docs'", specifier = ">=0.1" },
     { name = "mkdocs-material", marker = "extra == 'docs'", specifier = ">=9.5" },
@@ -76,7 +72,7 @@ requires-dist = [
     { name = "networkx", marker = "extra == 'examples'", specifier = ">=3" },
     { name = "optax", specifier = ">=0.2" },
     { name = "optimistix", specifier = ">=0.0.6" },
-    { name = "oryx", git = "https://github.com/thisiscam/oryx.git?branch=copulaad_support" },
+    { name = "oryx", git = "https://github.com/thisiscam/oryx.git?rev=copulaad_support" },
     { name = "pydot", marker = "extra == 'examples'", specifier = ">=2" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=7" },
     { name = "quadax", specifier = ">=0.2.9" },
@@ -631,11 +627,15 @@ wheels = [
 
 [[package]]
 name = "jet-array"
-version = "0.1.0a1"
-source = { git = "https://github.com/thisiscam/jet-array.git?branch=main#d2e770100913524cb1a4f2edc088b495e18233c2" }
+version = "0.1.0a2"
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "jax" },
     { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/25/cb/4786ef3dbcb53a7336bbedc386bcf094e462f317497dcfb21d2b38a933b0/jet_array-0.1.0a2.tar.gz", hash = "sha256:846dafec7d95cfeb798ed34db4a3413c744dbb2693c28a69eb322f44a367ee4d", size = 82386, upload-time = "2026-05-24T04:23:19.224Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/43/6e/37cb3079cdf5f9a716c6e4115d17a24b7599755bd688ca70b1c9115396fb/jet_array-0.1.0a2-py3-none-any.whl", hash = "sha256:6fa3cc8a83b7a77a530f77e49a61cb21fbc9d74aa7f953a53c99765c492cbf9a", size = 44985, upload-time = "2026-05-24T04:23:17.838Z" },
 ]
 
 [[package]]
@@ -1425,10 +1425,10 @@ wheels = [
 [[package]]
 name = "oryx"
 version = "0.2.9"
-source = { git = "https://github.com/thisiscam/oryx.git?branch=copulaad_support#7e5a9514e025d5200f0c59962dd1c7a3d99402d8" }
+source = { git = "https://github.com/thisiscam/oryx.git?rev=copulaad_support#bac0bf17337a93d240784ec201aa13deccee9cbd" }
 dependencies = [
     { name = "jax" },
-    { name = "tensorflow-probability", marker = "sys_platform == 'never'" },
+    { name = "tfp-nightly" },
 ]
 
 [[package]]
@@ -1829,23 +1829,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/83/d3/803453b36afefb7c2bb238361cd4ae6125a569b4db67cd9e79846ba2d68c/sympy-1.14.0.tar.gz", hash = "sha256:d3d3fe8df1e5a0b42f0e7bdf50541697dbe7d23746e894990c030e2b05e72517", size = 7793921, upload-time = "2025-04-27T18:05:01.611Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a2/09/77d55d46fd61b4a135c444fc97158ef34a095e5681d0a6c10b75bf356191/sympy-1.14.0-py3-none-any.whl", hash = "sha256:e091cc3e99d2141a0ba2847328f5479b05d94a6635cb96148ccb3f34671bd8f5", size = 6299353, upload-time = "2025-04-27T18:04:59.103Z" },
-]
-
-[[package]]
-name = "tensorflow-probability"
-version = "0.25.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "absl-py" },
-    { name = "cloudpickle" },
-    { name = "decorator" },
-    { name = "dm-tree" },
-    { name = "gast" },
-    { name = "numpy" },
-    { name = "six" },
-]
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/fe/b6/e116761ceeb880b7ad4c6a7e1203538754dd7dda42538f08d6daaf8dfa4d/tensorflow_probability-0.25.0-py2.py3-none-any.whl", hash = "sha256:f3f4d6431656c0122906888afe1b67b4400e82bd7f254b45b92e6c5b84ea8e3e", size = 6979403, upload-time = "2024-11-08T16:25:57.238Z" },
 ]
 
 [[package]]

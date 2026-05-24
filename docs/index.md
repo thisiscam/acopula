@@ -11,7 +11,13 @@ forward pass via Taylor-mode AD, scaling polynomially in the dimension.
 
 ## Install
 
-Install from source with [uv](https://docs.astral.sh/uv/):
+```bash
+pip install git+https://github.com/thisiscam/acopula
+```
+
+acopula depends on a patched [`oryx`](https://github.com/jax-ml/oryx) build
+(pulled from git during install) because stock `oryx` is incompatible with
+jax 0.8. For development, clone and use [uv](https://docs.astral.sh/uv/):
 
 ```bash
 git clone https://github.com/thisiscam/acopula
@@ -20,12 +26,9 @@ uv sync                 # add --extra examples for the plotting examples
 uv run python examples/01_quickstart.py
 ```
 
-uv is required (for now): `acopula` depends on a patched
-[`oryx`](https://github.com/jax-ml/oryx) build pinned via `[tool.uv.sources]`,
-and plain `pip install` (including `pip install git+…`) ignores that pin, pulls
-the stock PyPI `oryx` (incompatible with jax 0.8), and fails at import. A PyPI
-`pip install acopula` is **not available yet** — it is gated on an upstream
-`oryx` release compatible with jax 0.8.
+A PyPI `pip install acopula` is **not available yet**: the git-pinned `oryx`
+dependency can't be uploaded to PyPI, so it is gated on an upstream `oryx`
+release compatible with jax 0.8.
 
 `acopula` pins `jax>=0.8,<0.9` because it relies on JAX-internal APIs in the
 [jet-array](https://github.com/thisiscam/jet-array) backend.

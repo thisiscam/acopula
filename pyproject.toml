@@ -32,12 +32,17 @@ classifiers = [
 ]
 dependencies = [
     "jax>=0.8,<0.9",
-    "jet-array==0.1.0a1",
+    "jet-array==0.1.0a2",
     "jaxopt>=0.8",
     "optimistix>=0.0.6",
     "quadax>=0.2.9",
     "equinox>=0.13",
-    "oryx>=0.2.9",
+    # Direct ref to the patched fork (jax-0.8 import fixes + copy_p ILDJ +
+    # tfp-nightly dep).  pip and uv both honor this, so `pip install
+    # git+<acopula>` works.  NOTE: a git URL here makes the package
+    # un-uploadable to PyPI; swap back to `oryx>=<ver>` once a jax-0.8
+    # compatible oryx is published.
+    "oryx @ git+https://github.com/thisiscam/oryx.git@copulaad_support",
     "tfp-nightly==0.26.0.dev20251116",
     "scipy>=1.11",
     "sympy>=1.12",
@@ -69,35 +74,11 @@ docs = [
 required-environments = [
     "sys_platform == 'linux' and platform_machine == 'x86_64'",
 ]
-# oryx pulls in stable `tensorflow-probability`, which collides on disk with
-# `tfp-nightly` (both write into the `tensorflow_probability/` namespace).
-# Depending on uv's install order, stable's broken `ops.py` (referencing the
-# removed `jax.interpreters.xla.pytype_aval_mappings`) wins and crashes at
-# import.  Drop stable tfp from resolution; tfp-nightly satisfies every oryx
-# import path.
-override-dependencies = [
-    "tensorflow-probability ; sys_platform == 'never'",
-]
-# Pin tfp-nightly to the version that works with jax 0.8.x.  Newer nightlies
-# remove `jax.interpreters.xla.pytype_aval_mappings` and crash at import.
-constraint-dependencies = [
-    "tfp-nightly==0.26.0.dev20251116",
-]
 
-# PyPI's oryx 0.2.9 imports `from jax import util`, which jax 0.8.x removed.
-# The `copulaad_support` branch of the patched fork uses `from jax._src import
-# util` and ships the lax.copy_p ILDJ shim acopula expects.  This source
-# override applies only under uv; the published `oryx>=0.2.9` PyPI dep stays
-# in `dependencies` so a future plain `pip install acopula` works once the
-# upstream fix lands.
-[tool.uv.sources]
-oryx = { git = "https://github.com/thisiscam/oryx.git", branch = "copulaad_support" }
-# PyPI's jet-array==0.1.0a1 predates the log-space Taylor expansion
-# (sign, log|c|) representation that `bell.py`'s `log_jet=True` path
-# uses, and also predates the log_add NaN-gradient shift-guard at
-# structural zeros.  Pin to the public fork until a new wheel is
-# released.
-jet-array = { git = "https://github.com/thisiscam/jet-array.git", branch = "main" }
+[tool.hatch.metadata]
+# acopula depends on the oryx fork via a git direct reference (see
+# [project.dependencies]); hatchling requires opting in to build it.
+allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["acopula"]
