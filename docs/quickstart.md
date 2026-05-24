@@ -65,4 +65,5 @@ def survival_model(params, obs):
 cm = compile_model(survival_model, template=jnp.array([1.0, 1.0]), survival=True)
 ```
 
-See [`examples/03_censored_survival.py`](examples.md) for a runnable version.
+See the [Censored survival](examples/03_censored_survival.ipynb) notebook for a
+runnable version.
