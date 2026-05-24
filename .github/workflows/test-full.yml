@@ -1,0 +1,28 @@
+# Full suite, including `slow` tests (deep nesting / e2e sampling / high-d).
+# These are deselected from the PR gate (test.yml) because the whole suite
+# exceeds GitHub's 6h job limit on 2-core runners. Runs nightly + on demand.
+name: tests-full
+
+on:
+  schedule:
+    - cron: "0 7 * * *"  # 07:00 UTC daily
+  workflow_dispatch:
+
+jobs:
+  test-full:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+      - name: Install
+        run: uv sync --extra test --locked
+      - name: Run full suite
+        run: uv run --extra test python -m pytest -v -n auto

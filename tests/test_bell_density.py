@@ -365,6 +365,7 @@ def test_bell_asymmetric_sector_plus_leaf():
 # Category G: Many children (m > 2)
 # ============================
 
+@pytest.mark.slow
 def test_bell_four_sectors():
     """Root with 4 identical sectors — tests vmap over 4 children + Cauchy product."""
     def model(params, u):
@@ -574,6 +575,7 @@ def test_bell_3_layer_mixed():
     )
 
 
+@pytest.mark.slow
 def test_bell_3_layer_full_branching():
     """3 generators, multiple children at EVERY level:
 

@@ -42,18 +42,20 @@ class RegistrationContext:
 
 
 class Copula:
-    """Base class for Archimedean copulas in φ-notation.
+    r"""Base class for Archimedean copulas in $\varphi$-notation.
 
-    Subclasses must implement generator(u) which returns φ(u), where
-    u ∈ (0, 1], φ: (0,1] → [0, ∞), strictly decreasing, convex, φ(1)=0.
+    Subclasses must implement `generator(u)`, which returns $\varphi(u)$,
+    where $u \in (0, 1]$ and $\varphi:(0,1] \to [0,\infty)$ is strictly
+    decreasing and convex with $\varphi(1)=0$.
     """
 
     def generator(self, u: jax.Array) -> jax.Array:  # pragma: no cover - abstract
-        """Return the Archimedean generator φ(u).
+        r"""Return the Archimedean generator $\varphi(u)$.
 
-        Subclasses **must** implement this. φ maps (0, 1] → [0, ∞), is
-        strictly decreasing and convex, with φ(1) = 0. Everything else
-        (density, inverse, sampling) is derived from it automatically.
+        Subclasses **must** implement this. $\varphi$ maps $(0,1] \to
+        [0,\infty)$, is strictly decreasing and convex, with $\varphi(1)=0$.
+        Everything else (density, inverse, sampling) is derived from it
+        automatically.
         """
         raise NotImplementedError
 
@@ -62,14 +64,15 @@ class Copula:
         return _invert_generator(self.generator, t)
 
     def log_generator_kth_derivative(self, t: jax.Array, k: int) -> jax.Array:
-        """Return log |ψ^{(k)}(t)|, the log absolute k-th derivative.
+        r"""Return $\log|\psi^{(k)}(t)|$, the log absolute $k$-th derivative.
 
         Override this with a closed-form expression to bypass jet for
-        specific families.  For example, Clayton can use::
+        specific families. For example, Clayton can use
 
-            lgamma(k + 1/theta) - lgamma(1/theta) - (k + 1/theta) * log1p(t)
+        $$\log\Gamma(k + 1/\theta) - \log\Gamma(1/\theta)
+          - (k + 1/\theta)\,\log(1+t).$$
 
-        The default returns None, which tells the framework to use
+        The default returns ``None``, which tells the framework to use
         Taylor-mode AD via jet.
         """
         return None  # sentinel: use jet
@@ -77,16 +80,16 @@ class Copula:
     def generator_taylor_coefficients(
         self, t: jax.Array, k_max: int
     ) -> jax.Array:
-        """Return Taylor coefficients ``[ψ(t), ψ'(t)/1!, …, ψ^{(k_max)}(t)/k_max!]``.
+        r"""Return Taylor coefficients $[\psi(t),\, \psi'(t)/1!,\, \ldots,\, \psi^{(k_{\max})}(t)/k_{\max}!]$.
 
-        Override this when the closed-form ψ has a numerically stable
+        Override this when the closed-form $\psi$ has a numerically stable
         series representation that avoids the cancellations Taylor-mode
         AD on the closed form would produce at high derivative order.
-        For example, AMH's ψ is the Laplace transform of Geometric(1−θ),
-        so all Taylor coefficients are sums of same-sign terms (no
-        cancellation):
+        For example, AMH's $\psi$ is the Laplace transform of
+        $\mathrm{Geometric}(1-\theta)$, so all Taylor coefficients are
+        sums of same-sign terms (no cancellation):
 
-            ψ^{(k)}(t) = (-1)^k Σ_{x=1}^∞ x^k (1−θ) θ^{x−1} e^{−tx}
+        $$\psi^{(k)}(t) = (-1)^k \sum_{x=1}^{\infty} x^k\,(1-\theta)\,\theta^{x-1}\,e^{-tx}.$$
 
         The framework consults this hook everywhere it would otherwise
         call ``jet_array.jet`` on ``self.generator`` to get a Taylor
@@ -94,8 +97,8 @@ class Copula:
         nesting composition (``compose.compute_composition_taylor``).
         Returning ``None`` (the default) tells those call sites to
         fall back to the jet path, which is correct but loses
-        precision when ψ's derivatives have large alternating-sign
-        cancellations (e.g. AMH past d≈30 in float64).
+        precision when $\psi$'s derivatives have large alternating-sign
+        cancellations (e.g. AMH past $d \approx 30$ in float64).
 
         Args:
             t: scalar input point.
@@ -111,11 +114,11 @@ class Copula:
     def log_generator_taylor_coefficients(
         self, t: jax.Array, k_max: int
     ) -> Optional[Tuple[jax.Array, jax.Array]]:
-        """Log-space variant of :meth:`generator_taylor_coefficients`.
+        r"""Log-space variant of :meth:`generator_taylor_coefficients`.
 
         Return ``(sign, log_abs)``, two arrays of shape ``(k_max + 1,)`` with
 
-            ψ^{(k)}(t) / k!  ==  sign[k] * exp(log_abs[k]).
+        $$\psi^{(k)}(t) / k! \;=\; \mathrm{sign}[k]\,\exp(\mathrm{log\_abs}[k]).$$
 
         The Bell density consumes the Taylor coefficients as ``(sign, log|c|)``
         pairs internally, so a family whose normalized coefficients are

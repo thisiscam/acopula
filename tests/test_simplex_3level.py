@@ -12,6 +12,10 @@ from acopula.core import (
     _collect_leaves_in_order, _instantiate_copula_from_flat,
     _rosenblatt_bisect_uj, _reconstruct_obs_from_marginals,
 )
+import pytest
+
+# Heavy end-to-end / deep-nesting test; excluded from the fast PR gate.
+pytestmark = pytest.mark.slow
 
 
 @copula

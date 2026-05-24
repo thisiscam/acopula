@@ -49,7 +49,7 @@ print(grad)                                     # ∂ll/∂params, exact
 For survival data, swap the leaf distribution and mark censored observations.
 Use `float64` distribution parameters since `acopula` enables
 `jax_enable_x64` at import. Pass `survival=True` so leaf inversion uses
-`F^{-1}(1 - u)`.
+$F^{-1}(1 - u)$.
 
 ```python
 def survival_model(params, obs):

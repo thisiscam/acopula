@@ -36,8 +36,8 @@ on its children to build the model tree.
 ## Composition registry
 
 For nested copulas that mix families, register a closed-form composition
-`ψ_outer⁻¹ ∘ ψ_inner`, or choose the fallback strategy used when none is
-registered.
+$\psi_{\text{outer}}^{-1} \circ \psi_{\text{inner}}$, or choose the fallback
+strategy used when none is registered.
 
 ::: acopula.register_composition
 
