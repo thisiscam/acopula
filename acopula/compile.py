@@ -366,12 +366,17 @@ def compile_model(
             ``model_fn`` expects.  Values are used only to drive oryx's
             tracer; pass any sensible defaults (e.g.
             ``{"theta": 1.0}``).
-        method: Density evaluation backend.  ``"bell"`` uses the
-            polynomial-powering scan (recommended for nested >= 2
-            levels), ``"single_layer"`` is the closed-form unnested
-            formula, ``"nested"`` falls back to numerical integration
-            via the implicit-LST solver.  ``"auto"`` picks ``"bell"``
-            for depth > 1 else ``"single_layer"``.
+        method: Density-evaluation backend:
+
+            - ``"auto"`` (default): ``"bell"`` for depth > 1, else
+              ``"single_layer"``.
+            - ``"bell"``: polynomial-powering scan (recommended for
+              nested copulas; the only backend that supports
+              ``with_censored_mask``).
+            - ``"single_layer"``: closed-form unnested formula (flat
+              copulas only).
+            - ``"integral"``: numerical inverse-Laplace integration —
+              the only backend that uses ``ils_method`` / ``ils_params``.
         survival: Treat marginals as survival functions
             ``S(t) = 1 - F(t)`` rather than CDFs.  Required for the
             HACSurv-style joint survival likelihood.
@@ -379,8 +384,13 @@ def compile_model(
             third ``censored_mask`` argument so callers can ``vmap``
             per-observation masks.  Forces ``method="bell"`` since the
             other backends do not support dynamic censoring.
-        ils_method: Implicit-LST solver for ``method="nested"``.
-        ils_params: Extra params for the implicit solver.
+        ils_method: Inverse-Laplace solver used **only** by
+            ``method="integral"`` — e.g. ``"cohen"`` (default),
+            ``"euler"``, ``"post_widder"``. **Ignored by ``"bell"`` and
+            ``"single_layer"``**, which assemble the density analytically
+            and never invert a Laplace transform.
+        ils_params: Extra params for that solver; likewise **only used by
+            ``method="integral"``** and ignored by the other backends.
 
     Returns:
         A :class:`CompiledModel` holding the frozen graph, flattener,
