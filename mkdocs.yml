@@ -44,11 +44,20 @@ plugins:
         python:
           options:
             docstring_style: google
+            docstring_section_style: table     # Args/Returns as tables
             show_root_heading: true
-            show_source: true
-            members_order: source
+            show_root_full_path: false         # "Copula", not "acopula.core.Copula"
+            show_symbol_type_heading: true      # class/func/attr badges
+            show_symbol_type_toc: true          # and in the nav TOC
             separate_signature: true
             show_signature_annotations: true
+            signature_crossrefs: true
+            merge_init_into_class: false   # CompiledModel isn't user-constructed; its __init__ leaks private fields
+            members_order: source
+            filters: ["!^_"]                    # hide private / dunder members
+            show_source: false
+            summary: true
+            heading_level: 2
   # Emits /llms.txt (an index for LLMs/agents, per llmstxt.org) plus a single
   # concatenated llms-full.txt of the whole site.
   - llmstxt:
