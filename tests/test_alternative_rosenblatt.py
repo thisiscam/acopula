@@ -7,6 +7,7 @@ jax.config.update("jax_enable_x64", True)
 
 from acopula.core import copula
 import jet_array
+import pytest
 
 @copula
 class Clayton:
@@ -185,6 +186,7 @@ def test_hierarchical_factorization():
 # Approach 4: Marshall-Olkin + Rosenblatt Hybrid
 # =====================================================
 
+@pytest.mark.slow
 def test_mo_rosenblatt_hybrid():
     """Test: Use MO for root frailty, Rosenblatt within groups.
 

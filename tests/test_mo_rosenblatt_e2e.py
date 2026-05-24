@@ -30,6 +30,10 @@ jax.config.update("jax_enable_x64", True)
 
 from acopula.core import copula
 import jet_array
+import pytest
+
+# Heavy end-to-end / deep-nesting test; excluded from the fast PR gate.
+pytestmark = pytest.mark.slow
 
 
 @copula

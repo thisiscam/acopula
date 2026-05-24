@@ -202,6 +202,7 @@ def test_flat_copula(name, copula_cls, theta, d=5, n=2000):
                      "Same MO/oryx complex-output issue as nested Gumbel; "
                      "Rosenblatt path itself produces valid samples."))),
 ])
+@pytest.mark.slow
 def test_nested_2level(name, outer_cls, outer_theta, inner_cls, inner_theta,
                        groups=3, leaves_per_group=3, n=2000):
     """Test Rosenblatt on a 2-level nested copula."""
@@ -250,6 +251,7 @@ def test_nested_2level(name, outer_cls, outer_theta, inner_cls, inner_theta,
     return ok_r and structure_ok_r
 
 
+@pytest.mark.slow
 def test_nested_3level(n=2000):
     """Test Rosenblatt on a 3-level nested copula."""
     n_groups = 2
