@@ -1847,16 +1847,11 @@ def _full_mixed_partials(
     #     = F^{(k)}(S) * prod(|g'|) = Likelihood!
     T_k = _kth_derivative(outer_fun, S, k, scale=scaling_factor)
 
-    # 5. Assemble log-likelihood (mixed partial)
-    log_derivative_term = jnp.log(T_k)
-    jax.debug.print(
-        "log_derivative_term: {} T_k: {} S: {} scaling_factor: {} g_primes: {}",
-        log_derivative_term,
-        T_k,
-        S,
-        scaling_factor,
-        g_primes,
-    )
+    # 5. Assemble log-likelihood (mixed partial).  The mixed partial of an
+    # Archimedean copula is (-1)^k psi^{(k)}; take the magnitude so the log is
+    # well-defined for odd k as well (e.g. a single observed dimension under
+    # censoring), where the raw k-th derivative is negative.
+    log_derivative_term = jnp.log(jnp.abs(T_k))
 
     return log_derivative_term
 

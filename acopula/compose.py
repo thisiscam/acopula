@@ -28,7 +28,7 @@ _COMPOSE_REGISTRY_BY_NAME: Dict[Tuple[str, str], Callable] = {}
 _FALLBACK = "implicit"  # "implicit" (default, stable, O(d_c^3)) or "direct_jet" (fast, may overflow)
 
 
-def register_composition(outer_cls, inner_cls, fn):
+def register_composition(outer_cls: type, inner_cls: type, fn: Callable):
     """Register a stable closed-form composition h(t) = psi_outer_inv(psi_inner(t)).
 
     Args:
