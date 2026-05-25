@@ -1,14 +1,15 @@
-// MathJax config for Material for MkDocs + pymdownx.arithmatex (generic mode).
+// MathJax config covering both rendering paths on this site:
+//   - Markdown pages via pymdownx.arithmatex (generic): math arrives as
+//     \(...\) / \[...\] inside `arithmatex` spans.
+//   - Jupyter notebooks via mkdocs-jupyter: math arrives as raw $...$ / $$...$$.
+// So we accept both delimiter styles and let MathJax scan the whole page (it
+// skips <pre>/<code>/<script> by default, so $ in code is untouched).
 window.MathJax = {
   tex: {
-    inlineMath: [["\\(", "\\)"]],
-    displayMath: [["\\[", "\\]"]],
+    inlineMath: [["\\(", "\\)"], ["$", "$"]],
+    displayMath: [["\\[", "\\]"], ["$$", "$$"]],
     processEscapes: true,
     processEnvironments: true,
-  },
-  options: {
-    ignoreHtmlClass: ".*|",
-    processHtmlClass: "arithmatex",
   },
 };
 
