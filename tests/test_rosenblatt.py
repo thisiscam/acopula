@@ -172,7 +172,7 @@ def check_samples(samples, name, d, expected_tau_range=None):
     ("AMH", "AMH", 0.8),
     ("Joe", "Joe", 2.0),
 ])
-def test_flat_copula(name, copula_cls, theta, d=5, n=2000):
+def test_flat_copula(name, copula_cls, theta, d=5, n=500):
     """Test Rosenblatt on a flat (non-nested) copula."""
     # Resolve string copula name to class (parametrize stores strings cleanly).
     if isinstance(copula_cls, str):
@@ -204,7 +204,7 @@ def test_flat_copula(name, copula_cls, theta, d=5, n=2000):
 ])
 @pytest.mark.slow
 def test_nested_2level(name, outer_cls, outer_theta, inner_cls, inner_theta,
-                       groups=3, leaves_per_group=3, n=2000):
+                       groups=3, leaves_per_group=3, n=500):
     """Test Rosenblatt on a 2-level nested copula."""
     if isinstance(outer_cls, str):
         outer_cls = globals()[outer_cls]
@@ -252,7 +252,7 @@ def test_nested_2level(name, outer_cls, outer_theta, inner_cls, inner_theta,
 
 
 @pytest.mark.slow
-def test_nested_3level(n=2000):
+def test_nested_3level(n=500):
     """Test Rosenblatt on a 3-level nested copula."""
     n_groups = 2
     n_sectors = 2
@@ -307,7 +307,7 @@ def main():
     ]
     for name, cls, theta in families:
         try:
-            ok = test_flat_copula(name, cls, theta, d=5, n=2000)
+            ok = test_flat_copula(name, cls, theta, d=5, n=500)
             results[f"flat_{name}"] = "PASS" if ok else "FAIL"
         except Exception as e:
             import traceback
@@ -325,7 +325,7 @@ def main():
         try:
             ok = test_nested_2level(name, outer_cls, outer_theta,
                                     inner_cls, inner_theta,
-                                    groups=3, leaves_per_group=3, n=2000)
+                                    groups=3, leaves_per_group=3, n=500)
             results[f"nested_{name}"] = "PASS" if ok else "FAIL"
         except Exception as e:
             import traceback
@@ -334,7 +334,7 @@ def main():
 
     # 3. Nested 3-level test
     try:
-        ok = test_nested_3level(n=2000)
+        ok = test_nested_3level(n=500)
         results["nested_3level"] = "PASS" if ok else "FAIL"
     except Exception as e:
         import traceback

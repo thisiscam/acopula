@@ -23,6 +23,11 @@ from acopula import compile_model, marginal, copula
 jax.config.update("jax_enable_x64", True)
 mp.mp.dps = 50
 
+# High-precision mpmath regression guard (nested finite-difference up to 7 dims
+# at 50-digit precision). Correctness is load-bearing but the run is heavy, so
+# keep it out of the fast PR gate and run it in the nightly full suite.
+pytestmark = pytest.mark.slow
+
 TOL = 1e-7
 
 

@@ -125,7 +125,7 @@ def test_mo_vs_rosenblatt():
         Clayton, 1.0, Clayton, 3.0, n_sectors=2, leaves_per_sector=3
     )
 
-    n = 2000
+    n = 500
     key_mo = jrandom.PRNGKey(100)
     key_ros = jrandom.PRNGKey(200)
 

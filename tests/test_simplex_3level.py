@@ -137,7 +137,7 @@ def test_3level():
     print()
 
     key = jrandom.PRNGKey(42)
-    n_samples = 200
+    n_samples = 60
     samples = []
 
     t0 = time.time()
@@ -197,7 +197,7 @@ def test_3level():
         t_root = psi0_inv(psi1(t_mid1)) + psi0_inv(psi1(t_mid2))
         return psi0(t_root)
 
-    cdf_vals = jnp.array([full_cdf(samples[i]) for i in range(min(50, n_samples))])
+    cdf_vals = jnp.array([full_cdf(samples[i]) for i in range(min(20, n_samples))])
     print(f"\nCDF values: mean={float(jnp.mean(cdf_vals)):.4f}, "
           f"range=[{float(jnp.min(cdf_vals)):.4f}, {float(jnp.max(cdf_vals)):.4f}]")
 

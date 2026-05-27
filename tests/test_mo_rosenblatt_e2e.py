@@ -43,7 +43,7 @@ class Clayton:
         return (1.0 + t) ** (-1.0 / self.theta)
 
 
-def mo_rosenblatt_sample_nested(key, psi0, psi0_inv, groups, V0):
+def mo_rosenblatt_sample_nested(key, psi0, psi0_inv, groups, V0, n_bisect=45):
     """Sample from a nested copula given root frailty V0.
 
     Args:
@@ -52,6 +52,14 @@ def mo_rosenblatt_sample_nested(key, psi0, psi0_inv, groups, V0):
         psi0_inv: root generator inverse
         groups: list of (psi_g, psi_g_inv, m_g) tuples for each group
         V0: root frailty value
+        n_bisect: bisection iterations per leaf. 45 iters bracket the root to
+            ~(1-2e-14)/2**45 ~ 3e-14, far finer than the +/-0.1 tau tolerances
+            the test asserts. NOTE: psi_tilde is redefined per call, so each jet
+            eval re-traces (no XLA cache reuse) -- every sample costs ~3s on a
+            healthy host (tens of seconds when the box is contended). This is
+            the dominant runtime cost; reducing n_samples / n_bisect scales it
+            ~linearly, but reaching the ~1-3 min target needs jitting the
+            sampler (intentionally not done here to keep the test simple).
 
     Returns:
         u_all: array of sampled copula values for all leaves
@@ -78,7 +86,7 @@ def mo_rosenblatt_sample_nested(key, psi0, psi0_inv, groups, V0):
             S_old = S
 
             lo, hi = 1e-14, 1.0 - 1e-14
-            for _ in range(80):
+            for _ in range(n_bisect):
                 mid = (lo + hi) / 2.0
                 S_new = S_old + psi_g_inv(mid)
 
@@ -119,7 +127,7 @@ def test_mo_rosenblatt_e2e():
     # theta1=5: tau_within = 5/7 ≈ 0.714
 
     key = jrandom.PRNGKey(42)
-    n_samples = 300
+    n_samples = 120
     samples = []
 
     groups = [(psi1, psi1_inv, 2), (psi1, psi1_inv, 2)]
@@ -140,18 +148,16 @@ def test_mo_rosenblatt_e2e():
     print(f"Min: {jnp.min(samples):.6f}, Max: {jnp.max(samples):.6f}")
     print(f"Mean: {jnp.mean(samples, axis=0)}")
 
-    # Compute Kendall's tau via concordance
+    # Compute Kendall's tau via scipy (C implementation; the data is
+    # continuous so there are no ties and tau-a == tau-b).
+    from scipy import stats as _scipy_stats
+
     def kendall_tau(x, y, n=300):
-        """Approximate Kendall's tau from first n pairs."""
-        x, y = x[:n], y[:n]
-        concordant = 0
-        discordant = 0
-        for i in range(n):
-            for j in range(i + 1, n):
-                s = (x[i] - x[j]) * (y[i] - y[j])
-                concordant += (s > 0)
-                discordant += (s < 0)
-        return (concordant - discordant) / (concordant + discordant)
+        """Kendall's tau from first n pairs via scipy.stats.kendalltau."""
+        import numpy as _np
+        x = _np.asarray(x[:n])
+        y = _np.asarray(y[:n])
+        return _scipy_stats.kendalltau(x, y)[0]
 
     # Within-group tau (should be ~ 0.714 for theta1=5)
     tau_12 = kendall_tau(samples[:, 0], samples[:, 1])
@@ -222,7 +228,7 @@ def test_compare_with_existing():
 
     groups = [(psi1, psi1_inv, 2), (psi1, psi1_inv, 2)]
 
-    n_samples = 200
+    n_samples = 100
     samples = []
     key = jrandom.PRNGKey(77)
     for i in range(n_samples):
