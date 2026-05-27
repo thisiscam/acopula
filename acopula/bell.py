@@ -497,6 +497,28 @@ def _pad_to(arr: jax.Array, length: int) -> jax.Array:
     return jnp.concatenate([arr, jnp.zeros(length - len(arr))])
 
 
+def _mask_to_leaf_order(censored_mask: jax.Array,
+                        leaves_in_order: List[Leaf]) -> jax.Array:
+    """Reindex a caller-supplied ``censored_mask`` into ``leaves_in_order`` order.
+
+    The mask arrives indexed by ``obs_index`` (the caller's dimension order),
+    but ``optimize_order`` permutes leaves, so the leaf position used to index
+    the dynamic-censoring arrays (``u_vec`` etc.) is NOT the caller's dimension
+    index.  Mirror the obs gather in ``_marginal_transforms_chunked`` so the
+    mask lines up with everything it is combined with.  Handles rank-1 and
+    rank>1 ``obs_index`` identically to that gather.
+    """
+    rank = len(leaves_in_order[0].obs_index)
+    if rank == 1:
+        idx = jnp.array(
+            [lf.obs_index[0] for lf in leaves_in_order], dtype=jnp.int32)
+        return censored_mask[idx]
+    per_dim_idxs = tuple(
+        jnp.array([lf.obs_index[k] for lf in leaves_in_order], dtype=jnp.int32)
+        for k in range(rank))
+    return censored_mask[per_dim_idxs]
+
+
 def _collect_leaf_indices_for_subtree(node: Union[Node, Leaf],
                                       leaf_indices: Dict[int, int]) -> List[int]:
     """Collect global leaf indices for all leaves in a subtree."""
@@ -1169,6 +1191,10 @@ def _log_likelihood_bell_dynamic_legacy(
     # 1. Marginal transforms (reuse existing infrastructure)
     graph = optimize_order(graph)
     leaves_in_order = _collect_leaves_in_order(graph)
+    if dynamic:
+        # Mask arrives in obs (dimension) order; reindex to leaf order so it
+        # aligns with u_vec / alphas / betas (see _mask_to_leaf_order).
+        censored_mask = _mask_to_leaf_order(censored_mask, leaves_in_order)
 
     u_vec, log_lik_vec = _marginal_transforms_chunked(
         leaves_in_order=leaves_in_order,
@@ -1874,6 +1900,10 @@ def _log_likelihood_bell(
     dynamic = censored_mask is not None
     graph = optimize_order(graph)
     leaves_in_order = _collect_leaves_in_order(graph)
+    if dynamic:
+        # Mask arrives in obs (dimension) order; reindex to leaf order so it
+        # aligns with u_vec / alphas / betas (see _mask_to_leaf_order).
+        censored_mask = _mask_to_leaf_order(censored_mask, leaves_in_order)
     u_vec, log_lik_vec = _marginal_transforms_chunked(
         leaves_in_order=leaves_in_order, params=params_flat,
         obs=obs, survival=survival,
