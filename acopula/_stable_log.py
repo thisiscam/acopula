@@ -154,10 +154,31 @@ def safe_log(x):
     return jnp.log(x)
 
 
+# First-order reciprocal floor.  ``log``'s first derivative is ``1/x``, which
+# overflows float64 once ``|x| < 1 / max_float ~ 5.6e-309``.  XLA:GPU *preserves*
+# subnormals while XLA:CPU flushes them to exactly 0, so the unclamped
+# ``x_dot / x`` produces ``inf`` -> NaN on GPU even though the forward ``log(x)``
+# is finite.  We set the floor to the smallest *normal* float (``finfo.tiny``):
+# below it a value is subnormal, which is exactly the range XLA:CPU flushes to 0
+# (and routes through the ``where(abs>0, .., _LOG_TINY)`` guard to a zero
+# tangent).  Clamping at ``tiny`` therefore makes the GPU reproduce the CPU
+# gradient bit-for-bit, while every *normal* coefficient (``>= tiny``, including
+# the ~1e-200 range the second-order Hessian path uses) is kept and differentiated
+# exactly -- its ``1/x <= 1/tiny ~ 4.5e307`` never overflows.  We clamp the
+# *denominator* so the reciprocal is never formed for subnormal ``x``.
+import numpy as _np
+_RECIP_FLOOR = float(_np.finfo(_np.float64).tiny)  # 2.2250738585072014e-308
+
+
 @safe_log.defjvp
 def _safe_log_jvp(primals, tangents):
     x, = primals
     x_dot, = tangents
     if type(x_dot) is ad.Zero:
         x_dot = jnp.zeros_like(x)
-    return jnp.log(x), log_deriv(x, x_dot)
+    # Forward value is exact log(x) (finite even for subnormal x); only the
+    # first-order tangent's 1/x is clamped to avoid overflow.
+    safe = jnp.abs(x) >= _RECIP_FLOOR
+    x_clamped = jnp.where(safe, x, jnp.ones_like(x))
+    tangent = jnp.where(safe, log_deriv(x_clamped, x_dot), jnp.zeros_like(x_dot))
+    return jnp.log(x), tangent
